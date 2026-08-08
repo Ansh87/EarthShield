@@ -1,0 +1,12 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+  command = "true"
+
+[functions]
+  node_bundler = "esbuild"
+
+# Required environment variable (set in Netlify site settings, never in this repo):
+#   GEMINI_API_KEY   - your Gemini API key
+# Optional:
+#   GEMINI_MODEL     - overrides the default model fallback chain (e.g. "gemini-2.5-flash")
