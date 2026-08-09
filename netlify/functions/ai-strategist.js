@@ -18,7 +18,11 @@
 const MAX_BODY_BYTES = 20000;
 const MAX_CONCERN_CHARS = 300;
 const FETCH_TIMEOUT_MS = 20000;
-const GEMINI_MODELS_FALLBACK = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+// Model fallback chain, updated to current stable Gemini model IDs.
+// gemini-2.0-flash and gemini-1.5-flash have been retired by Google and
+// will return errors if used; gemini-2.5-flash-lite and gemini-3.5-flash
+// are confirmed-stable alternatives if the primary model is unavailable.
+const GEMINI_MODELS_FALLBACK = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.5-flash"];
 
 function validateStrategistResponse(candidates, resp){
   const errors = [];
@@ -239,10 +243,13 @@ exports.handler = async function(event){
   }
 
   if(!result.text){
-    if(result.status===429) return json(503, {error:"ai_unavailable", code:"rate_limited"});
-    if(result.status===401 || result.status===403) return json(503, {error:"ai_unavailable", code:"upstream_auth"});
+    // detail carries the raw upstream HTTP status (or "timeout"/"network_error") from the
+    // last model attempted, so a failure can be diagnosed from the Network tab response body
+    // alone, without needing to add temporary logging or dig through Netlify function logs.
+    if(result.status===429) return json(503, {error:"ai_unavailable", code:"rate_limited", detail:result.status});
+    if(result.status===401 || result.status===403) return json(503, {error:"ai_unavailable", code:"upstream_auth", detail:result.status});
     if(result.status==="timeout") return json(503, {error:"ai_unavailable", code:"timeout"});
-    return json(503, {error:"ai_unavailable", code:"upstream_unavailable"});
+    return json(503, {error:"ai_unavailable", code:"upstream_unavailable", detail:result.status});
   }
 
   let parsed;
