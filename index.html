@@ -338,6 +338,11 @@ input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;bac
 .mit .red .rv{font-family:'Space Grotesk';font-size:19px;font-weight:700;color:var(--green);line-height:1}
 .mit .red .rl{font-size:9px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-top:3px}
 .mit-caret{flex:0 0 auto;color:var(--muted);font-size:13px;width:16px;text-align:center}
+.mit-chips{display:flex;flex-wrap:wrap;gap:5px;margin:7px 0 0}
+.mit-chip{font-size:9.5px;padding:2px 8px;border-radius:20px;background:var(--panel);border:1px solid var(--line);color:var(--muted)}
+.mit-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.mit-badge{font-size:9.5px;font-weight:700;padding:3px 8px;border-radius:20px;border:1px solid;background:var(--panel)}
+.mit-check{margin-top:16px;width:16px;height:16px;accent-color:var(--aqua);cursor:pointer;flex:0 0 auto}
 .mit-detail{max-height:0;overflow:hidden;transition:max-height .3s ease}
 .mit-detail.open{max-height:900px}
 .mit-meta{padding:2px 14px 14px;display:flex;flex-direction:column;gap:1px;
@@ -640,6 +645,7 @@ const ST = {
   infoTab: "about",
   overviewSub: "snapshot",
   glossaryQuery: "",
+  glossaryCat: "all",
   strategist: {
     decisionMaker:"Regional government", objective:"Balanced strategy", budget:"Moderate",
     horizon:"Medium term", location:"No preference", concern:"",
@@ -650,6 +656,10 @@ const ST = {
   cascadeNode: null,
   cascadeShowScenario: false,
   cascadeShowAllNodes: false,
+  mitSearch: "",
+  mitSystemFilter: "all",
+  mitSort: "impact",
+  mitSelected: [],
 };
 
 /* =========================================================
@@ -666,7 +676,7 @@ async function jget(url, ms=9000){
 }
 
 /* =========================================================
-   AI COMPONENT 1: DATA-DRIVEN SST BASELINE MODEL.
+   STATISTICAL SST BASELINE MODEL.
    Fits an ordinary-least-squares trend line over ~60 days of
    real historical sea-surface temperature (Open-Meteo Marine
    archive) instead of using a fixed per-region constant. The
@@ -1173,10 +1183,10 @@ function propagatePlanetaryCascade(region, regionalResult, scenarioSim){
   };
 }
 function gcpBand(v){
-  if(v>=75) return {t:"Systemic", c:"--red", d:"Stress could reach many connected systems and regions."};
-  if(v>=55) return {t:"Spreading", c:"--amber", d:"Stress could reach several connected systems beyond the region."};
-  if(v>=30) return {t:"Emerging", c:"--violet", d:"Stress could begin reaching a few connected systems."};
-  return {t:"Contained", c:"--aqua", d:"Stress is unlikely to reach far beyond the region."};
+  if(v>=75) return {t:"Systemic", c:"--red", d:"Model shows broad propagation across highly connected systems."};
+  if(v>=55) return {t:"Spreading", c:"--amber", d:"Model shows propagation across several connected systems."};
+  if(v>=30) return {t:"Emerging", c:"--violet", d:"Model shows initial propagation into connected systems."};
+  return {t:"Contained", c:"--aqua", d:"Model shows limited propagation beyond the region."};
 }
 
 /* =========================================================
@@ -1642,6 +1652,45 @@ function ringSVG(score, opts){
   </div>`;
 }
 
+function scoreDeltaInterpretation(metricLabel, delta, context){
+  // context: "scenario" (Simulator) or "strategy" (AI Strategist). Shared wording so the same
+  // metric change reads the same way everywhere it appears (Simulator, AI Strategist, Cascade
+  // scenario-impact panel).
+  const under = context==="strategy" ? "the selected strategy" : "this scenario";
+  if(delta===0) return `No meaningful change in ${metricLabel} under ${under}.`;
+  const verb = context==="strategy" ? (delta>0?"increases":"decreases") : (delta>0?"increased":"decreased");
+  const prefix = context==="strategy" ? "Verified " : "";
+  const label = prefix ? metricLabel : (metricLabel.charAt(0).toUpperCase()+metricLabel.slice(1));
+  return `${prefix}${label} ${verb} under ${under}.`;
+}
+
+function scoreCompareCard(opts){
+  // The single shared "result" score component used by Overview, Simulator, and AI Strategist:
+  // one ring for the RESULTING score (never two rings for the same metric), plus a compact
+  // baseline -> result -> delta row underneath, using the same semantic delta colors everywhere
+  // (reduction/improvement = aqua, increase/worsening = amber or red by severity, no change =
+  // muted). Always shows the numeric +/- delta, never relies on color alone.
+  const bandFn = opts.bandFn || band;
+  const b = bandFn(opts.resultScore);
+  const delta = opts.resultScore - opts.baselineScore;
+  const magnitude = Math.abs(delta);
+  const deltaCol = delta===0 ? "var(--muted)" : delta<0 ? "var(--aqua)" : (magnitude>=10 ? "var(--red)" : "var(--amber)");
+  const deltaTxt = delta===0 ? "\u00B10" : (delta>0?`+${delta}`:`${delta}`);
+  return `<div class="score-block">
+    ${ringSVG(opts.resultScore, {label:opts.label, bandFn, size:opts.size||96})}
+    <div style="min-width:0;flex:1">
+      <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">${opts.label}${opts.help?opts.help:""}</div>
+      <div style="font-family:'Space Grotesk';font-size:13.5px;font-weight:600;color:${cv(b.c)};margin-top:5px">${b.t}</div>
+      <div class="score-sub mono" style="margin-top:4px;font-size:11.5px">
+        ${opts.baselineLabel||"Baseline"} ${opts.baselineScore} <span style="color:var(--muted2)">\u2192</span>
+        ${opts.resultLabel||"Result"} ${opts.resultScore}
+        <b style="color:${deltaCol};margin-left:6px">${deltaTxt}</b>
+      </div>
+      ${opts.interpretation?`<div class="score-sub" style="margin-top:4px">${opts.interpretation}</div>`:""}
+    </div>
+  </div>`;
+}
+
 function meterHTML(d){
   const col=cv(rcolor(d.v));
   return `<div class="meter">
@@ -1668,9 +1717,11 @@ function domainCap(k){
 }
 
 /* ---- the signature cascade chain diagram ---- */
-function cascadeDiagram(R){
-  const g=k=>R.domains.find(d=>d.k===k).v;
+function cascadeGraphData(R){
+  // Shared node/link definitions for the regional cascade diagram (cascadeDiagram) and its
+  // plain-language summary (cascadeWhatThisMeans), so the two views can never drift apart.
   // Column 1: drivers/inputs.  Column 2: system stress.  Column 3: outcomes.
+  const g=k=>R.domains.find(d=>d.k===k).v;
   const drivers=[
     {id:"sst",     nm:"Ocean Warming", v:Math.round(clamp(34+R.inputs.sstAnom*26)), c:"--aqua"},
     {id:"aien",    nm:"AI + Energy",   v:g("ai"),  c:"--amber"},
@@ -1687,10 +1738,6 @@ function cascadeDiagram(R){
     {id:"biodiv",nm:"Biodiversity",   v:g("biodiv"),c:"--green"},
     {id:"disp",  nm:"Displacement",   v:g("disp"),  c:"--red"},
   ];
-  const narrow = (typeof window!=="undefined" && window.innerWidth<=560);
-  const W = narrow?440:680, H = narrow?420:340;
-  const x1 = narrow?62:74, x2 = narrow?220:320, x3 = narrow?378:600;
-  const yPos=(arr,i)=>{ const gap=H/(arr.length+1); return gap*(i+1); };
   // LINKS: each corresponds to a term actually present in computeRisks().
   //  sst->ocean (oceanHeat=f(sstAnom)); sst->storm & ocean->storm (stormInt=f(oceanHeat,ingredients));
   //  sst->food & forest->food (foodWater=f(sstAnom,forestLoss)); sst->biodiv & industry->biodiv;
@@ -1703,6 +1750,16 @@ function cascadeDiagram(R){
     ["aien","res"],
     ["storm","disp"],
   ];
+  const byId={}; [...drivers,...mid,...out].forEach(n=>byId[n.id]=n);
+  return {drivers, mid, out, links, byId};
+}
+
+function cascadeDiagram(R){
+  const {drivers, mid, out, links, byId} = cascadeGraphData(R);
+  const narrow = (typeof window!=="undefined" && window.innerWidth<=560);
+  const W = narrow?440:680, H = narrow?420:340;
+  const x1 = narrow?62:74, x2 = narrow?220:320, x3 = narrow?378:600;
+  const yPos=(arr,i)=>{ const gap=H/(arr.length+1); return gap*(i+1); };
   const pos={};
   drivers.forEach((n,i)=>pos[n.id]={x:x1,y:yPos(drivers,i),...n});
   mid.forEach((n,i)=>pos[n.id]={x:x2,y:yPos(mid,i),...n});
@@ -1714,10 +1771,11 @@ function cascadeDiagram(R){
     const inten=(A.v+B.v)/2;
     const wd=1+inten/22, op=.18+inten/180;
     const col=inten>=66?"--red":inten>=48?"--amber":"--aqua";
+    const marker=col==="--red"?"cascArrowRed":col==="--amber"?"cascArrowAmber":"cascArrowAqua";
     const mx=(A.x+B.x)/2;
-    path+=`<path d="M${A.x+8} ${A.y} C ${mx} ${A.y}, ${mx} ${B.y}, ${B.x-8} ${B.y}"
+    path+=`<path d="M${A.x+8} ${A.y} C ${mx} ${A.y}, ${mx} ${B.y}, ${B.x-14} ${B.y}"
       stroke="${cv(col)}" stroke-width="${wd.toFixed(1)}" fill="none" opacity="${op.toFixed(2)}"
-      stroke-linecap="round"/>`;
+      stroke-linecap="round" marker-end="url(#${marker})"/>`;
   });
   let nodes="";
   const rMax = narrow?10:14, rDiv = narrow?13:10, fNode = narrow?9:10.5;
@@ -1734,9 +1792,59 @@ function cascadeDiagram(R){
   });
   const colLbl=(x,t)=>`<text x="${x}" y="20" text-anchor="middle" fill="${cv('--muted')}"
     font-size="${narrow?8.5:10}" font-weight="600" letter-spacing="${narrow?.6:1.4}" font-family="Space Grotesk">${t}</text>`;
+  const arrowDefs=`<defs>
+    <marker id="cascArrowAqua" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="${cv('--aqua')}"/></marker>
+    <marker id="cascArrowAmber" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="${cv('--amber')}"/></marker>
+    <marker id="cascArrowRed" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="${cv('--red')}"/></marker>
+  </defs>`;
   return `<svg id="cascadeSVG" viewBox="0 0 ${W} ${H}" width="100%">
+    ${arrowDefs}
     ${colLbl(x1,"DRIVERS")}${colLbl(x2,"SYSTEM STRESS")}${colLbl(x3,"CASCADING OUTCOME")}
     ${path}${nodes}</svg>`;
+}
+
+function cascadeWhatThisMeans(R){
+  // Plain-language read-out of the same drivers/links/outcomes cascadeDiagram renders (via the
+  // shared cascadeGraphData(R)), so the three summary values below always match the diagram.
+  const {drivers, out, links, byId} = cascadeGraphData(R);
+  const topDriver = [...drivers].sort((a,b)=>b.v-a.v)[0];
+  const topOutcome = [...out].sort((a,b)=>b.v-a.v)[0];
+  let bestLink=null, bestInten=-1;
+  links.forEach(([a,b])=>{
+    const A=byId[a], B=byId[b]; if(!A||!B) return;
+    const inten=(A.v+B.v)/2;
+    if(inten>bestInten){ bestInten=inten; bestLink={A,B}; }
+  });
+  const strength = bestInten>=66?"High":bestInten>=48?"Moderate":"Lower";
+  const strengthCol = bestInten>=66?"--red":bestInten>=48?"--amber":"--aqua";
+  const ICON_BG = {"--aqua":"rgba(72,208,174,.16)", "--violet":"rgba(156,167,232,.16)",
+    "--green":"rgba(127,216,154,.16)", "--amber":"rgba(232,178,74,.16)", "--red":"rgba(240,121,92,.16)"};
+  const icBolt = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
+  const icLink = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 15l6-6M8 17l-3-3a4 4 0 010-5.7l2-2a4 4 0 015.7 0M16 7l3 3a4 4 0 010 5.7l-2 2a4 4 0 01-5.7 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+  const icPeople = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.8"/><circle cx="17" cy="9" r="2.6" stroke="currentColor" stroke-width="1.8"/><path d="M2 20c0-3.3 2.7-6 6-6s6 2.7 6 6M14 20c0-2.4 1-4.5 2.6-5.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+  const item=(ic,col,label,value,sub)=>`
+    <div style="display:flex;gap:9px;align-items:flex-start">
+      <div class="insight-ic" style="background:${ICON_BG[col]};color:${cv(col)}">${ic}</div>
+      <div style="min-width:0">
+        <div class="ik">${label}</div>
+        <div class="iv" style="font-size:14px">${value}</div>
+        ${sub?`<div class="score-sub">${sub}</div>`:""}
+      </div>
+    </div>`;
+  return `
+    <div class="panel">
+      <div class="phead"><span class="dot" style="background:var(--aqua)"></span>
+        <h2>What this means for ${ST.region.name.split('(')[0].trim()}</h2></div>
+      <div class="grid cols3" style="margin-bottom:12px">
+        ${item(icBolt,"--red","Primary regional pressure", topDriver.nm, `Score: ${topDriver.v}`)}
+        ${item(icLink,strengthCol,"Strongest modeled link", `${bestLink.A.nm} \u2192 ${bestLink.B.nm}`, `Strength: ${strength}`)}
+        ${item(icPeople,"--violet","Highest downstream outcome", topOutcome.nm, `Score: ${topOutcome.v}`)}
+      </div>
+      <p style="font-size:12.5px;color:#B7D3BF;line-height:1.6;margin:0">
+        <b style="color:var(--txt)">${topDriver.nm}</b> is the strongest current regional pressure. The strongest
+        modeled relationship overall is <b style="color:var(--txt)">${bestLink.A.nm} \u2192 ${bestLink.B.nm}</b>.
+        <b style="color:var(--txt)">${topOutcome.nm}</b> is currently the highest downstream outcome.</p>
+    </div>`;
 }
 
 /* =========================================================
@@ -2343,11 +2451,17 @@ function buildCascade(R){
   const baseProp = propagatePlanetaryCascade(ST.region, computeRisks(ST.region, ST.live, null), null);
   const scenarioR = scenarioSim ? computeRisks(ST.region, ST.live, scenarioSim) : null;
   const scenarioProp = scenarioR ? propagatePlanetaryCascade(ST.region, scenarioR, scenarioSim) : null;
+  // If no scenario exists, never show a scenario view (nothing to compare against).
+  if(!scenarioR) ST.cascadeShowScenario = false;
   const activeProp = (ST.cascadeShowScenario && scenarioProp) ? scenarioProp : baseProp;
+  // Regional Cascade must reflect the SAME Baseline / Current Scenario selection as Planetary
+  // Cascade, driven by one shared piece of state (ST.cascadeShowScenario), so switching the
+  // toggle on either subtab updates both consistently.
+  const activeRegionalR = (ST.cascadeShowScenario && scenarioR) ? scenarioR : R;
 
   const body = ST.cascadeSub === "planetary"
-    ? cascadePlanetaryTab(activeProp, scenarioSim)
-    : cascadeRegionalTab(R);
+    ? cascadePlanetaryTab(activeProp, scenarioSim, baseProp, scenarioProp, R.cascade, scenarioR ? scenarioR.cascade : null)
+    : cascadeRegionalTab(activeRegionalR, scenarioSim);
 
   $("#v-cascade").innerHTML = cascadeSubtabsHTML() + body;
 
@@ -2362,20 +2476,31 @@ function buildCascade(R){
     buildCascade(computeRisks(ST.region, ST.live, null));
   });
   const pta=$("#pwToggleAllNodes"); if(pta) pta.onclick=()=>{ ST.cascadeShowAllNodes=!ST.cascadeShowAllNodes; buildCascade(computeRisks(ST.region, ST.live, null)); };
+  const pxf=$("#pwExploreFull"); if(pxf) pxf.onclick=()=>{ ST.cascadeShowAllNodes=true; buildCascade(computeRisks(ST.region, ST.live, null)); const nb=$("#pwNodeButtons"); if(nb && nb.scrollIntoView) nb.scrollIntoView({behavior:"smooth", block:"nearest"}); };
   const pb=$("#pwShowBase"); if(pb) pb.onclick=()=>{ ST.cascadeShowScenario=false; buildCascade(computeRisks(ST.region, ST.live, null)); };
   const ps=$("#pwShowScenario"); if(ps) ps.onclick=()=>{ ST.cascadeShowScenario=true; buildCascade(computeRisks(ST.region, ST.live, null)); };
+  const rgb=$("#rgShowBase"); if(rgb) rgb.onclick=()=>{ ST.cascadeShowScenario=false; buildCascade(computeRisks(ST.region, ST.live, null)); };
+  const rgs=$("#rgShowScenario"); if(rgs) rgs.onclick=()=>{ ST.cascadeShowScenario=true; buildCascade(computeRisks(ST.region, ST.live, null)); };
+  const prb=$("#pwRefreshBtn"); if(prb) prb.onclick=refresh;
 }
 
-function cascadeRegionalTab(R){
+function cascadeRegionalTab(R, scenarioSim){
+  const toggle = scenarioSim ? `
+      <div class="preset-lab">Comparing</div>
+      <div class="presets" style="margin-bottom:14px">
+        <button class="preset" id="rgShowBase" style="${!ST.cascadeShowScenario?'border-color:var(--violet);color:var(--violet)':''}">Baseline</button>
+        <button class="preset" id="rgShowScenario" style="${ST.cascadeShowScenario?'border-color:var(--violet);color:var(--violet)':''}">Current scenario</button>
+      </div>` : "";
   return `
     <div class="panel">
       <div class="phead"><span class="dot" style="background:var(--red)"></span>
         <h2>Regional cascade</h2>
-        <span class="tag">${ST.region.name.split('(')[0].trim()}</span></div>
+        <span class="tag">${ST.region.name.split('(')[0].trim()}${ST.cascadeShowScenario&&scenarioSim?' \u00B7 Scenario':''}</span></div>
       <p style="font-size:12.5px;color:#B7D3BF;line-height:1.55;margin:0 0 10px">
         Drivers flow left-to-right into system stress, then into cascading outcomes, all within
         ${ST.region.name}. Link thickness and colour scale with the risk carried along each path.</p>
       <div class="model-note">Connections represent relationships implemented in computeRisks().</div>
+      ${toggle}
       <div class="cascade-wrap">${cascadeDiagram(R)}</div>
       <div class="cz-legend">
         <span><i style="background:var(--aqua)"></i>Lower flow</span>
@@ -2384,31 +2509,148 @@ function cascadeRegionalTab(R){
       </div>
     </div>
 
-    <div class="panel">
-      <div class="phead"><span class="dot" style="background:var(--violet)"></span>
-        <h2>Worked example</h2></div>
-      <p style="font-size:12.5px;color:#B7D3BF;line-height:1.6;margin:0">
-        Reading only the links the model actually computes: a warm sea-surface anomaly raises
-        <b style="color:var(--txt)">Ocean Heat</b>, which combines with atmospheric ingredients to raise
-        <b style="color:var(--txt)">Storm Intensity</b>; stronger storms then raise
-        <b style="color:var(--txt)">Displacement</b> for exposed coastlines. In parallel, the same warm
-        anomaly and rising <b style="color:var(--txt)">Forest Loss</b> push <b style="color:var(--txt)">Food
-        & Water</b> risk up, while AI + energy load, industry and forest loss feed
-        <b style="color:var(--txt)">Resource Stress</b>. These regional outcomes are what feed the
-        planetary layer, shown in the Planetary Cascade tab.</p>
-    </div>`;
+    ${cascadeWhatThisMeans(R)}`;
 }
 
-function cascadePlanetaryTab(activeProp, scenarioSim){
+function spilloverMap(activeProp){
+  // Compact dotted/stippled world map (same real coastline data as hotspotMap/earthWatermarkSVG,
+  // via worldLandPaths()) with a glowing origin marker. When spillover is "documented" it also
+  // draws an arc to each real destination region from REGION_CONNECTIONS, with every dot
+  // hoverable for real connection info. When spillover is only "possible" or "none", it shows
+  // ONLY the origin marker with a subtle glow -- no decorative arcs in arbitrary directions, so
+  // the map never visually implies a geographic destination the model does not actually know.
+  // Sized small (this is a supporting visual, not the focus of the card) via its flex container
+  // in cascadePlanetaryTab. Hover/focus uses the same .tip / .tip-box mechanism as hotspotMap().
+  const W=720,H=360;
+  const proj=(lat,lon)=>({ x:(lon+180)/360*W, y:(90-lat)/180*H });
+  const o = proj(ST.region.lat, ST.region.lon);
+  const tips=[];
+  const tipDiv=(p,label,sub,key)=>{
+    tips.push(`<div class="tip" tabindex="0" aria-label="${label}" style="position:absolute;left:${(p.x/W*100).toFixed(2)}%;top:${(p.y/H*100).toFixed(2)}%;
+        transform:translate(-50%,-50%);width:22px;height:22px;margin:0;color:transparent;cursor:pointer" data-spill="${key}">
+        <span class="tip-box" style="left:50%;top:auto;bottom:150%;transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px)">
+          <b style="color:var(--txt)">${label}</b>${sub?`<br><span style="color:var(--muted)">${sub}</span>`:""}
+        </span>
+      </div>`);
+  };
+
+  let arcsSVG="", destDotsSVG="";
+  if(activeProp.spilloverStatus==="documented"){
+    activeProp.affectedRegions.forEach(ar=>{
+      const reg = REGIONS.find(r=>r.id===ar.id); if(!reg) return;
+      const p = proj(reg.lat, reg.lon);
+      const mx=(o.x+p.x)/2, my=Math.min(o.y,p.y)-26;
+      arcsSVG+=`<path d="M${o.x} ${o.y} Q${mx} ${my} ${p.x} ${p.y}" stroke="var(--amber)" stroke-width="1.5" fill="none" opacity=".8"/>`;
+      destDotsSVG+=`<circle cx="${p.x}" cy="${p.y}" r="4.5" fill="var(--amber)" stroke="#2A1D06" stroke-width="1.2"/>`;
+      tipDiv(p, reg.name, `${ar.connectionType} \u00B7 ${(ar.impact*100).toFixed(1)} impact`, ar.id);
+    });
+  }
+
+  const originLabel = activeProp.spilloverStatus==="documented" ? `Origin \u00B7 driving ${activeProp.affectedRegions.length} documented connection${activeProp.affectedRegions.length===1?"":"s"}`
+    : activeProp.spilloverStatus==="possible" ? "Origin \u00B7 elevated pressure, no documented destination"
+    : "Origin \u00B7 spillover not indicated at current levels";
+  tipDiv(o, ST.region.name, originLabel, "origin");
+
+  return `<div class="hot-map" style="aspect-ratio:2/1">
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%;display:block;border-radius:8px" aria-hidden="true">
+      <defs>
+        <clipPath id="spillLandClip">${worldLandPaths()}</clipPath>
+        <pattern id="spillDots" width="7" height="7" patternUnits="userSpaceOnUse">
+          <circle cx="1.6" cy="1.6" r="1.15" fill="#8FE3C9" opacity=".55"/>
+        </pattern>
+      </defs>
+      <rect x="0" y="0" width="${W}" height="${H}" fill="#04140F"/>
+      <rect x="0" y="0" width="${W}" height="${H}" fill="url(#spillDots)" clip-path="url(#spillLandClip)"/>
+      ${arcsSVG}
+      <circle cx="${o.x}" cy="${o.y}" r="12" fill="var(--amber)" opacity=".22"><animate attributeName="r" values="9;18;9" dur="2.4s" repeatCount="indefinite"/><animate attributeName="opacity" values=".3;0;.3" dur="2.4s" repeatCount="indefinite"/></circle>
+      <circle cx="${o.x}" cy="${o.y}" r="5.5" fill="var(--amber)" stroke="#2A1D06" stroke-width="1.4"/>
+      ${destDotsSVG}
+    </svg>
+    ${tips.join("")}
+  </div>`;
+}
+
+function cascadeWhyItMatters(activeProp){
+  // Dynamic, data-driven read-out of the strongest pathway already computed by
+  // propagatePlanetaryCascade() -- no new modeling, just a plain-language summary of the
+  // same activeProp.strongestPath / activeProp.gcp values shown elsewhere on this tab.
+  if(!activeProp.strongestPath){
+    return `<div class="panel">
+      <div class="phead"><span class="dot" style="background:var(--violet)"></span><h2>Why this pathway matters</h2></div>
+      <p style="font-size:12.5px;color:#B7D3BF;line-height:1.6;margin:0">No propagating pathway is detected at current levels for ${ST.region.name}.</p>
+    </div>`;
+  }
+  const hops = activeProp.strongestPath.chain.length;
+  const labels = activeProp.strongestPath.labels;
+  return `<div class="panel">
+    <div class="phead"><span class="dot" style="background:var(--violet)"></span><h2>Why this pathway matters</h2></div>
+    <p style="font-size:12.5px;color:#B7D3BF;line-height:1.6;margin:0">
+      The strongest modeled pathway from <b style="color:var(--txt)">${ST.region.name}</b> begins with
+      <b style="color:var(--txt)">${labels[0]}</b> and reaches <b style="color:var(--txt)">${labels[labels.length-1]}</b>
+      through ${hops} modeled connection${hops===1?"":"s"} in the EarthShield dependency graph. Its end-to-end
+      pathway strength is <b style="color:var(--aqua)">${activeProp.strongestPath.value}/100</b>. Global Cascade
+      Potential for ${ST.region.name} is currently <b style="color:${cv(activeProp.band.c)}">${activeProp.gcp}/100
+      (${activeProp.band.t})</b>.</p>
+  </div>`;
+}
+
+function cascadeScenarioImpact(baseProp, scenarioProp, baseRSS, scenarioRSS){
+  // Same numerical comparison style used in Simulator's scoreCompareCard (baseline -> result,
+  // signed delta, semantic color) but as a compact row list rather than another large card.
+  if(!baseProp || !scenarioProp) return "";
+  const fmt=d=> d===0?"\u00B10":(d>0?`(+${d})`:`(${d})`);
+  const row=(label,a,b,unit,last)=>{
+    const d=b-a;
+    const col = d>0 ? "var(--red)" : d<0 ? "var(--aqua)" : "var(--muted)";
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;${last?"":"border-bottom:1px solid var(--line)"}">
+      <span style="font-size:12px;color:var(--muted)">${label}</span>
+      <span style="font-size:12.5px;font-family:'JetBrains Mono'"><b style="color:var(--txt)">${a}${unit||""}</b>
+        <span style="color:var(--muted2)"> \u2192 </span><b style="color:var(--txt)">${b}${unit||""}</b>
+        <span style="color:${col};margin-left:6px">${fmt(d)}</span></span>
+    </div>`;
+  };
+  const rssRow = (baseRSS!=null && scenarioRSS!=null) ? row("Regional Stress Score", baseRSS, scenarioRSS, "") : "";
+  return `<div class="panel">
+    <div class="phead"><span class="dot" style="background:var(--amber)"></span><h2>Scenario impact</h2></div>
+    <p style="font-size:11.5px;color:var(--muted);line-height:1.5;margin:0 0 4px">Baseline vs. current scenario, for ${ST.region.name}.</p>
+    ${rssRow}
+    ${row("Global Cascade Potential", baseProp.gcp, scenarioProp.gcp, "/100")}
+    ${row("Affected systems", baseProp.affectedNodes.length, scenarioProp.affectedNodes.length, "")}
+    ${row("Cascade depth", baseProp.depthReached, scenarioProp.depthReached, "", true)}
+  </div>`;
+}
+
+function cascadePlanetaryTab(activeProp, scenarioSim, baseProp, scenarioProp, baseRSS, scenarioRSS){
+  const summaryCards = `<div class="grid cols3" style="margin-bottom:14px">
+    <div class="insight-card">
+      <div class="ik">Global Cascade Potential ${helpIcon("globalCascadePotential")}</div>
+      <div class="iv" style="color:${cv(activeProp.band.c)}">${activeProp.gcp}<span style="font-size:12px;color:var(--muted)">/100</span></div>
+      <div class="score-sub">${activeProp.band.t} \u00B7 Modeled connectivity index</div>
+    </div>
+    <div class="insight-card">
+      <div class="ik">Materially affected systems</div>
+      <div class="iv">${activeProp.affectedNodes.length}<span style="font-size:12px;color:var(--muted)"> of ${GRAPH_NODES.length}</span></div>
+      <div class="score-sub">Systems with impact above the material threshold.</div>
+    </div>
+    <div class="insight-card">
+      <div class="ik">Cascade depth</div>
+      <div class="iv">${activeProp.depthReached}<span style="font-size:12px;color:var(--muted)"> level${activeProp.depthReached===1?"":"s"}</span></div>
+      <div class="score-sub">Maximum propagation depth reached in the current model.</div>
+    </div>
+  </div>`;
+  const lastRefreshTxt = ST.lastRefreshAt
+    ? new Date(ST.lastRefreshAt).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})
+    : "Not yet refreshed";
   return `
     <div class="panel">
       <div class="phead"><span class="dot" style="background:var(--violet)"></span>
         <h2>Planetary cascade</h2>
         <span class="tag">${GRAPH_EDGES.length} documented connections</span></div>
-      <p style="font-size:12.5px;color:#B7D3BF;line-height:1.6;margin:0 0 10px">
-        Origin region → regional risk domain → connected system → downstream system → affected region or
+      <p style="font-size:12.5px;color:#B7D3BF;line-height:1.6;margin:0 0 12px">
+        Origin region \u2192 regional risk domain \u2192 connected system \u2192 downstream system \u2192 affected region or
         human outcome. Every arrow below corresponds to an actual edge in the dependency graph; nothing
         here is decorative.</p>
+      ${summaryCards}
       ${scenarioSim ? `
       <div class="preset-lab">Comparing</div>
       <div class="presets" style="margin-bottom:14px">
@@ -2416,9 +2658,19 @@ function cascadePlanetaryTab(activeProp, scenarioSim){
         <button class="preset" id="pwShowScenario" style="${ST.cascadeShowScenario?'border-color:var(--violet);color:var(--violet)':''}">Current scenario</button>
       </div>` : ""}
       <div class="preset-lab">Strongest full pathway</div>
-      <div style="margin-bottom:16px">${pathwayChainHTML(activeProp)}</div>
+      <div>${pathwayChainHTML(activeProp)}</div>
+    </div>
 
-      <div class="preset-lab">Filter by pathway type</div>
+    ${cascadeWhyItMatters(activeProp)}
+    ${scenarioSim ? cascadeScenarioImpact(baseProp, scenarioProp, baseRSS, scenarioRSS) : ""}
+
+    <div class="panel">
+      <div class="phead"><span class="dot" style="background:var(--aqua)"></span>
+        <h2>Explore dependency graph</h2>
+        <span class="tag">${GRAPH_NODES.length} modeled systems \u00B7 ${GRAPH_EDGES.length} documented connections</span></div>
+      <button class="calc-toggle" id="pwExploreFull" style="margin-top:0">Explore full network <span>\u2192</span></button>
+
+      <div class="preset-lab" style="margin-top:12px">Filter by pathway type</div>
       <div class="subtabs" id="pwFilterBar">
         ${["all","environmental","infrastructure","resource","human"].map(c=>
           `<button class="subtab ${ST.cascadeFilter===c?'on':''}" data-cat="${c}">${c[0].toUpperCase()+c.slice(1)}</button>`).join("")}
@@ -2433,55 +2685,105 @@ function cascadePlanetaryTab(activeProp, scenarioSim){
             const secondary = activeProp.secondaryNodes.find(x=>x.id===n.id);
             const on = ST.cascadeNode===n.id;
             const col = impact ? cv(rcolor(impact.impact)) : secondary ? "var(--muted)" : "var(--muted2)";
-            const label = impact ? ` · ${impact.impact}` : secondary ? ` · ${secondary.impact} (secondary)` : "";
+            const label = impact ? ` \u00B7 ${impact.impact}` : secondary ? ` \u00B7 ${secondary.impact} (secondary)` : "";
             return `<button class="preset" data-node="${n.id}" style="border-color:${on?'var(--violet)':(impact?col:'var(--line)')};color:${on?'var(--violet)':(impact?col:'var(--muted)')}">${n.nm}${label}</button>`;
           }).join("")}
       </div>
-      <button class="calc-toggle" id="pwToggleAllNodes" style="margin-top:6px">${ST.cascadeShowAllNodes ? "Show top systems only" : `View all ${GRAPH_NODES.length} modeled connections`} <span>${ST.cascadeShowAllNodes?"▴":"▾"}</span></button>
+      <button class="calc-toggle" id="pwToggleAllNodes" style="margin-top:6px">${ST.cascadeShowAllNodes ? "Show materially affected systems only" : `View all ${GRAPH_NODES.length} modeled systems`} <span>${ST.cascadeShowAllNodes?"\u25B4":"\u25BE"}</span></button>
       <div id="pwNodeDetail">${ST.cascadeNode ? nodeDetailHTML(ST.cascadeNode, activeProp) : ""}</div>
 
-      <div class="preset-lab" style="margin-top:14px">Cross-region spillover (Human Displacement)</div>
-      ${activeProp.spilloverStatus==="documented" ? `
-      <div class="feed">
-        ${activeProp.affectedRegions.map(r=>`<div class="frow">
-          <div class="fic" style="background:rgba(156,167,232,.18);color:var(--violet)">→</div>
-          <div class="fnm"><div class="a">${r.name}</div><div class="b">${r.connectionType} · ${r.evidenceType.replace('-',' ')}</div></div>
-          <div class="fval" style="color:var(--violet)">${(r.impact*100).toFixed(1)}<span class="u"> impact</span></div>
-        </div>`).join("")}
-      </div>` : activeProp.spilloverStatus==="possible" ? `
-      <div class="mit-disc">Cross-region spillover: <b>Possible</b>. Specific destination: <b>Not determined</b>.
-        Basis: modeled system pressure — displacement pressure is elevated for ${ST.region.name}, but EarthShield has no
-        documented cross-region connection on file for this origin, so no destination region is asserted.</div>` : `
-      <div class="mit-disc">Cross-region spillover: <b>Not indicated</b> at current levels for ${ST.region.name}.</div>`}
-
-      <div class="mit-disc" style="margin-top:14px">Global Cascade Potential for ${ST.region.name}: <b>${activeProp.gcp}/100</b>
-        (${activeProp.band.t}). Confidence: <b>${activeProp.confidence}</b>. Modeled scenario index, not an operational forecast.</div>
+      <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:16px;font-size:11px;color:var(--muted)">
+        <span>Click a node for details</span>
+        <span>Hover a connection for relationship info</span>
+        <span>Use "View all" to see every modeled system, not just materially affected ones</span>
+      </div>
     </div>
 
     <div class="panel">
       <div class="phead"><span class="dot" style="background:var(--violet)"></span>
-        <h2>Worked example</h2></div>
-      <p style="font-size:12.5px;color:#B7D3BF;line-height:1.6;margin:0 0 10px">
-        Continuing from the regional cascade: at the planetary layer, Storm Intensification can
-        propagate into the Electricity Grid and Ports & Logistics system nodes, which in turn can reach
-        Public Health, Food & Water, and ultimately Population Displacement, up to three hops from the
-        origin domain.</p>
-      <p style="font-size:11.5px;color:var(--muted);line-height:1.55;margin:0">
-        AI and data-center growth increases electricity, cooling, water, and infrastructure pressure.
-        EarthShield models this within resource and digital-infrastructure pathways. It does <b>not</b> treat
-        data-center growth as directly changing the selected region's current ocean temperature.</p>
+        <h2>Cross-region spillover</h2>
+        <span class="tag">Human displacement</span></div>
+      <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+        <div style="flex:0 1 240px;min-width:160px;max-width:280px">${spilloverMap(activeProp)}</div>
+        <div style="flex:1 1 260px;min-width:220px">
+          ${activeProp.spilloverStatus==="documented" ? `
+          <div style="display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.4px;color:var(--amber);background:rgba(232,178,74,.14);border:1px solid rgba(232,178,74,.35);border-radius:20px;padding:3px 10px;margin-bottom:8px">Documented</div>
+          <div class="feed">
+            ${activeProp.affectedRegions.map(r=>`<div class="frow">
+              <div class="fic" style="background:rgba(156,167,232,.18);color:var(--violet)">\u2192</div>
+              <div class="fnm"><div class="a">${r.name}</div><div class="b">${r.connectionType} \u00B7 Confidence: ${r.confidence} \u00B7 ${r.evidenceType.replace('-',' ')}</div></div>
+              <div class="fval" style="color:var(--violet)">${(r.impact*100).toFixed(1)}<span class="u"> impact</span></div>
+            </div>`).join("")}
+          </div>` : activeProp.spilloverStatus==="possible" ? `
+          <div style="display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.4px;color:var(--amber);background:rgba(232,178,74,.14);border:1px solid rgba(232,178,74,.35);border-radius:20px;padding:3px 10px;margin-bottom:8px">Possible</div>
+          <div style="font-size:12px;font-weight:600;color:var(--txt);margin-bottom:4px">Specific destination not determined</div>
+          <div style="font-size:11.5px;color:var(--muted);line-height:1.5">Displacement pressure is elevated for ${ST.region.name}, but EarthShield has no
+            documented cross-region connection on file for this origin, so no destination region is asserted.</div>` : `
+          <div style="display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.4px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:20px;padding:3px 10px;margin-bottom:8px">Not indicated</div>
+          <div style="font-size:11.5px;color:var(--muted);line-height:1.5">Not indicated at current modeled levels for ${ST.region.name}.</div>`}
+        </div>
+      </div>
+
+      <div class="mit-disc" style="margin-top:14px">Global Cascade Potential for ${ST.region.name}: <b>${activeProp.gcp}/100</b>
+        (${activeProp.band.t}). Confidence: <b>${activeProp.confidence}</b>. Modeled connectivity index, not an operational forecast.</div>
+    </div>
+
+    <div class="model-note" style="margin-top:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <span>Every arrow represents a relationship used by EarthShield's dependency graph.</span>
+      <span style="display:flex;align-items:center;gap:10px;color:var(--muted)">
+        <span>Last updated: ${lastRefreshTxt}</span>
+        <button class="btn ghost" id="pwRefreshBtn" style="padding:4px 10px;font-size:11px">Refresh data</button>
+      </span>
     </div>`;
 }
 
 function pathwayChainHTML(prop){
+  // Circular nodes connected by directional arrows, matching the same node-and-arrow visual
+  // identity as the Regional Cascade diagram (cascadeDiagram), instead of generic rectangular
+  // boxes. Entirely driven by the actual computed activeProp.strongestPath -- nothing here is
+  // hardcoded. Each node after the origin/initial-pressure pair shows its real GRAPH_NODES
+  // category as a small role label. Horizontally scrollable so it never forces page-level
+  // horizontal overflow on narrow screens.
   if(!prop.strongestPath){
     return `<div style="font-size:12px;color:var(--muted)">No propagating pathway detected at current levels.</div>`;
   }
-  const labels = [ST.region.name, ...prop.strongestPath.labels];
-  return `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">${
-    labels.map((l,i)=> (i>0?`<span style="color:var(--muted2)">→</span>`:"") +
-      `<div class="chip"><i style="background:${i===0?'var(--violet)':'var(--aqua)'}"></i>${l}</div>`).join("")
-  }</div>
+  const chain = prop.strongestPath.chain;
+  const CAT_COL = {origin:"--violet", pressure:"--amber", environmental:"--aqua",
+    infrastructure:"--violet", resource:"--amber", human:"--red"};
+  const seq = [
+    {name: ST.region.name, role:"Origin region", cat:"origin"},
+    {name: DOMAIN_LABEL[chain[0].from] || chain[0].from, role:"Initial pressure", cat:"pressure"},
+    ...chain.map(hop=>{
+      const node = NODE_BY_ID[hop.to];
+      const cat = node ? node.category : "";
+      return {name: node ? node.nm : hop.to, role: cat ? cat.charAt(0).toUpperCase()+cat.slice(1) : "", cat};
+    })
+  ];
+  const n = seq.length, step = 132, pad = 66, H = 116, R = 22, y = H/2;
+  const W = step*(n-1) + pad*2;
+  let markerDefs="", arrowsSVG="", nodesSVG="";
+  seq.forEach((nd,i)=>{
+    const x = pad + step*i;
+    const col = cv(CAT_COL[nd.cat] || "--aqua");
+    if(i>0){
+      const px = pad + step*(i-1);
+      markerDefs += `<marker id="pwArrow${i}" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="${col}"/></marker>`;
+      arrowsSVG += `<path d="M${px+R+4} ${y} L${x-R-10} ${y}" stroke="${col}" stroke-width="1.8" fill="none" marker-end="url(#pwArrow${i})"/>`;
+    }
+    const label = nd.name.length>18 ? nd.name.slice(0,17)+"\u2026" : nd.name;
+    nodesSVG += `<g>
+      <circle cx="${x}" cy="${y}" r="${R}" fill="${col}" fill-opacity=".15" stroke="${col}" stroke-width="2"/>
+      <circle cx="${x}" cy="${y}" r="4" fill="${col}"/>
+      <text x="${x}" y="${y-R-20}" text-anchor="middle" fill="${cv('--txt')}" font-size="10.5" font-weight="600" font-family="Space Grotesk">${label}</text>
+      <text x="${x}" y="${y-R-8}" text-anchor="middle" fill="${col}" font-size="9" font-weight="700" font-family="Space Grotesk" letter-spacing=".4">${nd.role}</text>
+    </g>`;
+  });
+  return `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+    <svg viewBox="0 0 ${W} ${H}" width="${Math.max(W,300)}" height="${H}" style="display:block;min-width:${W}px">
+      <defs>${markerDefs}</defs>
+      ${arrowsSVG}${nodesSVG}
+    </svg>
+  </div>
   <div style="font-size:11px;color:var(--muted);margin-top:8px">End-to-end pathway strength: <b style="color:var(--aqua)">${prop.strongestPath.value}/100</b></div>`;
 }
 
@@ -2538,7 +2840,7 @@ function buildSim(R){
       <div class="affects">Affects: ${affects}</div>
     </div>`;
   const simResult = ST.sim
-    ? renderSimDelta(ST.sim) + renderSimPlanetary(ST.sim)
+    ? simScenarioResultHTML(ST.sim) + renderSimDelta(ST.sim) + renderSimPlanetary(ST.sim)
     : `<div class="empty-sim"><div class="ico">◇</div>
         <p>Adjust the stressors, then press <b style="color:var(--aqua)">Run simulation</b><br>
         to see how the Regional Stress Score and Global Cascade Potential respond.</p></div>`;
@@ -2612,6 +2914,40 @@ function buildSim(R){
     runAndSync();
     toast(PRESET_NAME[btn.dataset.preset]+" applied");
   });
+}
+
+function simScenarioResultHTML(sim){
+  // Top-of-result "Scenario result" summary using the shared scoreCompareCard component (same
+  // visual family as Overview/AI Strategist), so the user understands the headline outcome
+  // before reading the detailed per-domain deltas that already exist further down.
+  const base=sim.base, after=sim.after;
+  const baseProp = propagatePlanetaryCascade(ST.region, base, null);
+  const afterProp = propagatePlanetaryCascade(ST.region, after, {...ST.simInputs});
+  const rssCard = scoreCompareCard({label:"Regional Stress Score", resultScore:after.cascade, baselineScore:base.cascade,
+    bandFn:band, baselineLabel:"Baseline", resultLabel:"Scenario",
+    interpretation: scoreDeltaInterpretation("regional pressure", after.cascade-base.cascade, "scenario")});
+  const gcpCard = scoreCompareCard({label:"Global Cascade Potential", resultScore:afterProp.gcp, baselineScore:baseProp.gcp,
+    bandFn:gcpBand, baselineLabel:"Baseline", resultLabel:"Scenario",
+    interpretation: scoreDeltaInterpretation("cascade potential", afterProp.gcp-baseProp.gcp, "scenario")});
+  const topDomAfter = [...after.domains].sort((a,b)=>b.v-a.v)[0];
+  const topDomBaseVal = base.domains.find(d=>d.k===topDomAfter.k).v;
+  const baseTxt = baseProp.strongestPath ? baseProp.strongestPath.labels.join(" \u2192 ") : "none detected";
+  const afterTxt = afterProp.strongestPath ? afterProp.strongestPath.labels.join(" \u2192 ") : "none detected";
+  const pathwayRow = baseTxt!==afterTxt ? `
+    <div class="lvm-row"><span class="lvm-k">Strongest modeled pathway</span>
+      <span class="lvm-v">${baseTxt} <span style="color:var(--muted2)">\u2192</span> ${afterTxt}</span></div>` : "";
+  return `
+    <div class="preset-lab">Scenario result</div>
+    <div class="rss-gcp-row">${rssCard}${gcpCard}</div>
+    <div class="lvm" style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+      <div class="lvm-row"><span class="lvm-k">Main regional pressure</span>
+        <span class="lvm-v">${topDomAfter.nm}: ${topDomBaseVal} <span style="color:var(--muted2)">\u2192</span> ${topDomAfter.v}</span></div>
+      <div class="lvm-row"><span class="lvm-k">Materially affected systems</span>
+        <span class="lvm-v">${baseProp.affectedNodes.length} <span style="color:var(--muted2)">\u2192</span> ${afterProp.affectedNodes.length}</span></div>
+      <div class="lvm-row"><span class="lvm-k">Cascade depth</span>
+        <span class="lvm-v">${baseProp.depthReached} <span style="color:var(--muted2)">\u2192</span> ${afterProp.depthReached}</span></div>
+      ${pathwayRow}
+    </div>`;
 }
 
 function renderSimDelta(sim){
@@ -2688,9 +3024,62 @@ function renderSimPlanetary(sim){
   `;
 }
 
+function mitImpactBucket(a, list){
+  const maxRed = Math.max(...list.map(x=>x.red), 1);
+  if(a.red >= maxRed*0.7) return "High";
+  if(a.red >= maxRed*0.4) return "Medium";
+  return "Low";
+}
+
+function mitigationSummaryCard(m){
+  // "If all high-impact interventions were fully implemented": merges the sim variables of
+  // every action currently bucketed High (same relative-impact bucketing used on each row,
+  // via mitImpactBucket), reruns the full deterministic model exactly like the verified
+  // 3-action portfolio merge in generateInterventionCandidates() does, and shows the result
+  // in the same shared score visual used everywhere else in EarthShield.
+  const highActs = m.list.filter(a=>mitImpactBucket(a,m.list)==="High");
+  const useActs = highActs.length ? highActs : m.list.slice(0,1);
+  const merged = {};
+  useActs.forEach(a=>{ Object.entries(a.sim).forEach(([k,v])=>{ merged[k]=(merged[k]||0)+v; }); });
+  const after = computeRisks(ST.region, ST.live, merged);
+  const afterProp = propagatePlanetaryCascade(ST.region, after, merged);
+  const rssCard = scoreCompareCard({label:"Regional Stress Score", resultScore:after.cascade, baselineScore:m.baseR,
+    bandFn:band, baselineLabel:"Baseline", resultLabel:"If implemented",
+    interpretation: scoreDeltaInterpretation("regional pressure", after.cascade-m.baseR, "scenario")});
+  const gcpCard = scoreCompareCard({label:"Global Cascade Potential", resultScore:afterProp.gcp, baselineScore:m.baseGcp,
+    bandFn:gcpBand, baselineLabel:"Baseline", resultLabel:"If implemented",
+    interpretation: scoreDeltaInterpretation("cascade potential", afterProp.gcp-m.baseGcp, "scenario")});
+  return `<div class="panel" style="margin-bottom:14px">
+    <div class="phead"><span class="dot" style="background:var(--green)"></span>
+      <h2>If all high-impact interventions were fully implemented</h2></div>
+    <div class="rss-gcp-row">${rssCard}${gcpCard}</div>
+    <p style="font-size:11px;color:var(--muted);margin:2px 0 0;line-height:1.5">Based on ${useActs.length} high-impact
+      intervention${useActs.length===1?"":"s"}: ${useActs.map(a=>a.nm).join(", ")}. Modeled estimate from rerunning
+      the deterministic model, not a guarantee.</p>
+  </div>`;
+}
+
 function buildMitigation(){
   const m=mitigations(ST.region, ST.live);
-  const cards=m.list.map((a,i)=>{
+  const IMPACT_COL = {High:"var(--green)", Medium:"var(--amber)", Low:"var(--muted)"};
+  const EFFORT_COL = {Low:"var(--green)", Medium:"var(--amber)", High:"var(--red)"};
+  const allSystems = [...new Set(m.list.flatMap(a=>a.domains))].sort();
+
+  let filtered = m.list.filter(a=>{
+    const q = ST.mitSearch.trim().toLowerCase();
+    const matchesSearch = !q || a.nm.toLowerCase().includes(q) || a.why.toLowerCase().includes(q);
+    const matchesSystem = ST.mitSystemFilter==="all" || a.domains.includes(ST.mitSystemFilter);
+    return matchesSearch && matchesSystem;
+  });
+  if(ST.mitSort==="effort"){
+    const order={Low:0,Medium:1,High:2};
+    filtered = filtered.slice().sort((x,y)=>(order[x.cost]??1)-(order[y.cost]??1));
+  } // default order from mitigations() is already impact (red) descending
+
+  const cards=filtered.map((a)=>{
+    const i = m.list.indexOf(a);
+    const bucket = mitImpactBucket(a, m.list);
+    const checked = ST.mitSelected.includes(i);
     const meta=[
       ["Regional effect", `${a.why} (domains: ${a.domains.join(", ")})`],
       ["Planetary effect", a.planetaryNarrative],
@@ -2708,18 +3097,32 @@ function buildMitigation(){
     ].map(([k,v])=>`<div class="mit-meta-row"><span class="mm-k">${k}</span><span class="mm-v">${v}</span></div>`).join("");
     return `
     <div class="mit" data-idx="${i}">
-      <button class="mit-head" data-toggle="${i}">
-        <div class="rank">${i+1}</div>
-        <div class="mbody"><h4>${a.nm}</h4><p>${a.why}</p></div>
-        <div class="red"><div class="rv">${a.red>0?'−'+a.red:'~0'}</div><div class="rl">pts regional</div></div>
-        <div class="mit-caret" id="mcaret-${i}">▾</div>
-      </button>
+      <div style="display:flex;gap:10px;padding:14px 14px 0 14px;align-items:flex-start">
+        <input type="checkbox" class="mit-check" data-check="${i}" ${checked?"checked":""} aria-label="Select ${a.nm} for AI Strategist">
+        <button class="mit-head" data-toggle="${i}" style="padding:0 0 14px;flex:1;align-items:flex-start">
+          <div class="rank">${i+1}</div>
+          <div class="mbody">
+            <h4>${a.nm}</h4>
+            <p>${a.why}</p>
+            <div class="mit-chips">${a.domains.map(d=>`<span class="mit-chip">${d}</span>`).join("")}</div>
+            <div class="mit-badges">
+              <span class="mit-badge" style="color:${IMPACT_COL[bucket]};border-color:${IMPACT_COL[bucket]}">Impact: ${bucket} (−${a.red} pts)</span>
+              <span class="mit-badge" style="color:${EFFORT_COL[a.cost]||'var(--muted)'};border-color:${EFFORT_COL[a.cost]||'var(--muted)'}">Effort: ${a.cost}</span>
+              <span class="mit-badge" style="color:var(--violet);border-color:var(--violet)">Evidence: ${a.conf}</span>
+            </div>
+          </div>
+          <div class="red"><div class="rv">${a.red>0?'−'+a.red:'~0'}</div><div class="rl">pts regional</div></div>
+          <div class="mit-caret" id="mcaret-${i}">▾</div>
+        </button>
+      </div>
       <div class="mit-detail" id="mdetail-${i}">
         <div class="mit-meta">${meta}</div>
       </div>
     </div>`;
-  }).join("");
+  }).join("") || `<div class="mit-disc">No interventions match this search/filter.</div>`;
+
   $("#v-mitigation").innerHTML=`
+    ${mitigationSummaryCard(m)}
     <div class="panel">
       <div class="phead"><span class="dot" style="background:var(--green)"></span>
         <h2>Interventions</h2>
@@ -2728,15 +3131,49 @@ function buildMitigation(){
         Each intervention changes one or more documented model variables, then BOTH the regional model and
         the planetary propagation model are rerun. Ranked by modeled Regional Stress Score reduction.
         Tap any intervention to see its full regional and planetary effects.</p>
-      <div class="mit-disc">All reductions are <b>modeled estimates</b> from rerunning the deterministic models, not guarantees. A curated 3-intervention portfolio matched to your budget, objective and timeline is available under <b>AI Strategist</b>.</div>
+      <div class="mit-disc">All reductions are <b>modeled estimates</b> from rerunning the deterministic models, not guarantees.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin:12px 0">
+        <input type="text" id="mitSearch" placeholder="Search interventions…" value="${ST.mitSearch.replace(/"/g,'&quot;')}"
+          style="flex:1 1 200px;min-width:160px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+            color:var(--txt);font-size:12px;padding:8px 10px">
+        <select id="mitSystemFilter" style="flex:0 1 200px;background:var(--panel2);border:1px solid var(--line);
+            border-radius:8px;color:var(--txt);font-size:12px;padding:8px 10px">
+          <option value="all" ${ST.mitSystemFilter==="all"?"selected":""}>All systems</option>
+          ${allSystems.map(sys=>`<option value="${sys}" ${ST.mitSystemFilter===sys?"selected":""}>${sys}</option>`).join("")}
+        </select>
+        <select id="mitSort" style="flex:0 1 200px;background:var(--panel2);border:1px solid var(--line);
+            border-radius:8px;color:var(--txt);font-size:12px;padding:8px 10px">
+          <option value="impact" ${ST.mitSort!=="effort"?"selected":""}>Impact (High to Low)</option>
+          <option value="effort" ${ST.mitSort==="effort"?"selected":""}>Effort (Low to High)</option>
+        </select>
+      </div>
       ${cards}
+      <div style="margin-top:16px;display:flex;flex-direction:column;gap:6px">
+        <button class="btn primary" id="btnBuildStrategyFromMit" style="background:var(--violet);color:#0E1230">
+          Build AI Strategy with Selected Interventions →</button>
+        <div style="font-size:10.5px;color:var(--muted);text-align:center">${ST.mitSelected.length} intervention${ST.mitSelected.length===1?"":"s"} selected · opens AI Strategist to build a full verified strategy</div>
+      </div>
     </div>`;
+
   document.querySelectorAll("#v-mitigation .mit-head").forEach(btn=>btn.onclick=()=>{
     const i=btn.dataset.toggle;
     const d=$("#mdetail-"+i), c=$("#mcaret-"+i);
     const open=d.classList.contains("open");
     d.classList.toggle("open"); if(c) c.textContent=open?"▾":"▴";
   });
+  document.querySelectorAll("#v-mitigation .mit-check").forEach(cb=>cb.onclick=(e)=>{
+    e.stopPropagation();
+    const i=+cb.dataset.check;
+    const idx=ST.mitSelected.indexOf(i);
+    if(cb.checked && idx===-1) ST.mitSelected.push(i);
+    if(!cb.checked && idx!==-1) ST.mitSelected.splice(idx,1);
+    const countEl = $("#v-mitigation .btn.primary + div");
+    if(countEl) countEl.textContent = `${ST.mitSelected.length} intervention${ST.mitSelected.length===1?"":"s"} selected \u00B7 opens AI Strategist to build a full verified strategy`;
+  });
+  const ms=$("#mitSearch"); if(ms) ms.oninput=()=>{ ST.mitSearch=ms.value; buildMitigation(); };
+  const mf=$("#mitSystemFilter"); if(mf) mf.onchange=()=>{ ST.mitSystemFilter=mf.value; buildMitigation(); };
+  const msort=$("#mitSort"); if(msort) msort.onchange=()=>{ ST.mitSort=msort.value; buildMitigation(); };
+  const bs=$("#btnBuildStrategyFromMit"); if(bs) bs.onclick=()=>setView("strategist");
 }
 
 /* =========================================================
@@ -2799,7 +3236,8 @@ function strategistResultHTML(){
   const instantNote = s.source!=="gemini"
     ? `<div class="model-note" style="display:block;margin-top:10px">This strategy was generated using EarthShield's transparent optimization rules. No generative AI was used.</div>` : "";
   const actsByKey = Object.fromEntries(mitigationActions().map(a=>[a.key,a]));
-  const ivCards = r.interventions.slice().sort((a,b)=>a.priority-b.priority).map(iv=>{
+  const sortedIv = r.interventions.slice().sort((a,b)=>a.priority-b.priority);
+  const ivCards = sortedIv.map(iv=>{
     const meta = actsByKey[iv.actionId];
     return `<div class="strat-iv">
       <div class="strat-iv-head"><div class="strat-iv-rank">${iv.priority}</div><h4>${meta?meta.nm:iv.actionId}</h4></div>
@@ -2815,27 +3253,51 @@ function strategistResultHTML(){
   const rmCol=(title,arr)=>`<div class="strat-rm-col"><h5>${title}</h5><ul>${
     (arr&&arr.length)?arr.map(x=>`<li>${x}</li>`).join(""):'<li style="color:var(--muted2)">None listed</li>'}</ul></div>`;
   const monitoring = (r.monitoringIndicators||[]).map(m=>`<div class="chip"><i style="background:var(--violet)"></i>${m.name} (${m.availability})</div>`).join("");
-  const planNames = r.interventions.slice().sort((a,b)=>a.priority-b.priority)
-    .map(iv=>{ const meta=actsByKey[iv.actionId]; return meta?meta.nm:iv.actionId; });
-  return `
-    ${badge}
-    ${s.notice?`<div class="uncert moderate" style="margin-top:10px"><div class="ui" style="color:var(--amber)">&#9888;</div><div class="ub"><h5>Fallback used</h5><p>${s.notice}</p></div></div>`:""}
-    <div class="strat-summary">${r.strategySummary||""}</div>
+
+  const hasVerified = v.regionalStressBefore!=null && v.regionalStressAfter!=null && v.gcpBefore!=null && v.gcpAfter!=null;
+  const verifiedCards = hasVerified ? `
+    <div class="rss-gcp-row">
+      ${scoreCompareCard({label:"Regional Stress Score", resultScore:v.regionalStressAfter, baselineScore:v.regionalStressBefore,
+        bandFn:band, baselineLabel:"Baseline", resultLabel:"Strategy",
+        interpretation: scoreDeltaInterpretation("regional pressure", v.regionalStressAfter-v.regionalStressBefore, "strategy")})}
+      ${scoreCompareCard({label:"Global Cascade Potential", resultScore:v.gcpAfter, baselineScore:v.gcpBefore,
+        bandFn:gcpBand, baselineLabel:"Baseline", resultLabel:"Strategy",
+        interpretation: scoreDeltaInterpretation("cascade potential", v.gcpAfter-v.gcpBefore, "strategy")})}
+    </div>` : `
     <div class="strat-verified">
       <div class="strat-vcard"><div class="vk">Regional Stress Score (verified)</div>
-        <div class="vv">${v.regionalStressBefore ?? "–"} <span class="arr">→</span> ${v.regionalStressAfter ?? "–"}</div></div>
+        <div class="vv">${v.regionalStressBefore ?? "\u2013"} <span class="arr">\u2192</span> ${v.regionalStressAfter ?? "\u2013"}</div></div>
       <div class="strat-vcard"><div class="vk">Global Cascade Potential (verified)</div>
-        <div class="vv">${v.gcpBefore ?? "–"} <span class="arr">→</span> ${v.gcpAfter ?? "–"}</div></div>
-    </div>
+        <div class="vv">${v.gcpBefore ?? "\u2013"} <span class="arr">\u2192</span> ${v.gcpAfter ?? "\u2013"}</div></div>
+    </div>`;
+
+  const top3 = sortedIv.slice(0,3).map(iv=>{
+    const meta = actsByKey[iv.actionId];
+    return `<div class="lvm-row" style="align-items:flex-start">
+      <span class="lvm-k" style="flex:0 0 auto">${iv.priority}. ${meta?meta.nm:iv.actionId}</span>
+      <span class="lvm-v" style="text-align:right">${iv.whySelected||""}</span>
+    </div>`;
+  }).join("");
+
+  return `
+    <div class="preset-lab">Verified strategy result</div>
+    ${badge}
+    ${s.notice?`<div class="uncert moderate" style="margin-top:10px"><div class="ui" style="color:var(--amber)">&#9888;</div><div class="ub"><h5>Fallback used</h5><p>${s.notice}</p></div></div>`:""}
+    <div class="strat-summary" style="margin-top:10px">${r.strategySummary||""}</div>
+    ${verifiedCards}
     <div style="padding:13px 14px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
       <div style="font-family:'Space Grotesk';font-size:12.5px;font-weight:600;margin-bottom:6px">Critical intervention point</div>
       <div style="font-size:12px;color:#B7D3BF;line-height:1.5">${r.criticalInterventionPoint ? (r.criticalInterventionPoint.reason||"") : ""}</div>
     </div>
-    <div style="padding:13px 14px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;margin-bottom:10px">
-      <div style="font-family:'Space Grotesk';font-size:12.5px;font-weight:600;margin-bottom:8px">Recommended bundle (${planNames.length} interventions)</div>
-      <div class="drivers">${planNames.map((n,i)=>`<div class="chip"><i style="background:var(--violet)"></i>${i+1}. ${n}</div>`).join("")}</div>
+    <div style="padding:13px 14px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
+      <div style="font-family:'Space Grotesk';font-size:12.5px;font-weight:600;margin-bottom:8px">Recommended interventions</div>
+      <div class="lvm" style="margin-top:0;border-top:none;padding-top:0">${top3}</div>
     </div>
-    <button class="calc-toggle" id="stratDetailToggle">${ST.strategist.showDetail?"Hide full plan":"Show full plan"} — per-intervention rationale, roadmap, monitoring <span>${ST.strategist.showDetail?"▴":"▾"}</span></button>
+    <div class="lvm" style="margin-bottom:10px">
+      <div class="lvm-row"><span class="lvm-k">Confidence</span><span class="lvm-v">${r.confidence||"n/a"}</span></div>
+      <div class="lvm-row"><span class="lvm-k">Main limitation</span><span class="lvm-v">${(r.limitations&&r.limitations[0])||"None noted"}</span></div>
+    </div>
+    <button class="calc-toggle" id="stratDetailToggle">${ST.strategist.showDetail?"Hide full plan":"Show full plan"} \u2014 per-intervention rationale, roadmap, monitoring <span>${ST.strategist.showDetail?"\u25B4":"\u25BE"}</span></button>
     <div class="calc-inline${ST.strategist.showDetail?" open":""}" id="stratDetailBody">
       ${ivCards}
       <div class="strat-roadmap">
@@ -3129,7 +3591,7 @@ const GLOSSARY = {
     why:"Live signals update EarthShield's regional score with real current conditions instead of a static assumption." },
   scenario: { plain:"Scenario", technical:null,
     def:"A counterfactual set of stressor changes, applied on top of the current baseline to see how the regional and planetary scores would respond.",
-    why:"Scenarios (via the Simulator or the Featured Demo) let users test what-if situations without altering the live baseline." },
+    why:"Scenarios, built in the Simulator, let users test what-if situations without altering the live baseline." },
   intervention: { plain:"Intervention", technical:null,
     def:"A specific, documented action (for example hardening the grid or restoring wetlands) that changes one or more model variables and is verified by rerunning the full model.",
     why:"Every intervention effect shown in EarthShield comes from an actual model rerun, not an estimated or asserted number." },
@@ -3155,21 +3617,26 @@ function helpIcon(key){
 
 const SOURCES=[
   {nm:"NASA",   d:"Ocean heat, the ocean absorbs ~90% of excess planetary heat",
+   usedFor:"Calibrating the ocean-heat share of the Regional Stress model",
    url:"https://science.nasa.gov/earth/explore/the-ocean-and-climate-change/"},
   {nm:"NOAA",   d:"Storms & severe-weather ingredients, warm seas fuel stronger storms",
+   usedFor:"Ocean and storm-risk signal thresholds",
    url:"https://oceanexplorer.noaa.gov/facts/hurricanes.html"},
   {nm:"IEA",    d:"Data center electricity growth, ~460 TWh (2024) \u2192 1,000+ TWh (2030)",
+   usedFor:"Energy demand and AI data-center load context",
    url:"https://www.iea.org/reports/energy-and-ai"},
   {nm:"IPCC",   d:"Land use & emissions, land use \u2248 one-quarter of GHG emissions",
+   usedFor:"Forest loss and land-use pressure calibration",
    url:"https://www.ipcc.ch/srccl/"},
   {nm:"Open-Meteo", d:"Live weather, ocean & air-quality APIs powering the data feeds",
+   usedFor:"Live sea temperature, atmospheric, and air-quality signals",
    url:"https://open-meteo.com/"},
 ];
 function sourcesHTML(){
   const rows=SOURCES.map(s=>`
     <a class="src-row" href="${s.url}" target="_blank" rel="noopener">
       <div class="src-nm">${s.nm}</div>
-      <div class="src-d">${s.d}</div>
+      <div class="src-d">${s.d}${s.usedFor?`<div style="color:var(--muted);font-size:10.5px;margin-top:3px">Used for: ${s.usedFor}</div>`:""}</div>
       <div class="src-ar">\u2197</div>
     </a>`).join("");
   return `<div class="panel">
@@ -3192,12 +3659,14 @@ function buildInfo(){
   else if(sub==="validation") body = infoValidation();
   else if(sub==="glossary") body = infoGlossary();
 
-  $("#v-info").innerHTML = `<div class="subtabs">${subBtns}</div><div id="infoBody">${body}</div>
-    <div class="foot"><b style="color:var(--muted)">Disclaimer:</b> EarthShield AI is a student-developed
-      proof of concept by Ansh Saini of South Brunswick High School, New Jersey. It is for educational and
-      decision-support purposes only and should not replace official alerts, forecasts, evacuation orders,
-      or instructions from local authorities. Decision-support prototype, not an operational forecast.</div>`;
-  document.querySelectorAll("#v-info .subtab").forEach(btb=>btb.onclick=()=>{
+  const footHTML = sub==="about" ? `
+    <div class="foot"><b style="color:var(--muted)">Disclaimer:</b> EarthShield is a student-developed
+      decision-support prototype created by Ansh Saini, a high school student. It is designed for
+      educational and exploratory use and is not an operational forecast, emergency warning system, or
+      replacement for official guidance.</div>` : "";
+
+  $("#v-info").innerHTML = `<div class="subtabs" id="infoSubtabs">${subBtns}</div><div id="infoBody">${body}</div>${footHTML}`;
+  document.querySelectorAll("#infoSubtabs .subtab").forEach(btb=>btb.onclick=()=>{
     ST.infoTab=btb.dataset.sub; buildInfo(); $("#main").scrollTop=0;
   });
   wireExpandSections();
@@ -3206,6 +3675,9 @@ function buildInfo(){
     if(gs){
       gs.oninput = ()=>{ ST.glossaryQuery = gs.value; buildInfo(); gs.focus(); gs.setSelectionRange(gs.value.length, gs.value.length); };
     }
+    document.querySelectorAll("#glossaryCatBar .subtab").forEach(chip=>chip.onclick=()=>{
+      ST.glossaryCat = chip.dataset.glosscat; buildInfo();
+    });
   }
 }
 
@@ -3218,34 +3690,27 @@ function infoAbout(){
         <h2 style="font-family:'Space Grotesk';font-size:24px;font-weight:700;margin:0 0 10px;letter-spacing:-.4px">
           EarthShield</h2>
         <p style="font-size:13px;line-height:1.6;color:#B7D3BF;margin:0;max-width:640px">
-          A planetary risk-intelligence platform that models how ocean warming and human resource
-          consumption interact to create cascading risks across weather, ecosystems, food and water,
-          infrastructure, and human life, then recommends preventive actions before damage becomes
-          visible.</p>
+          EarthShield models how regional environmental and human pressures can cascade across connected
+          systems, then evaluates interventions that could reduce modeled risk before pressures escalate.</p>
       </div>
     </div>
     <div class="panel">
       <div class="phead"><span class="dot" style="background:var(--aqua)"></span>
         <h2>What it does</h2></div>
       <div class="grid cols2" style="gap:12px">
-        ${aboutCard("\u3030","Models cascade pathways","Scores how a stressor in one domain propagates into compounding risk across many, not isolated hazards.","--aqua")}
-        ${aboutCard("\u25C8","Two engines","An ocean-warming impact engine and a resource-consumption stress engine feed one Regional Stress Score.","--amber")}
-        ${aboutCard("\u25F7","Simulates what-ifs","Counterfactual sliders show how energy, AI load, forest loss, sea temperature and population reshape risk.","--violet")}
-        ${aboutCard("\u2713","Ranks actions","Each candidate action is re-run as a counterfactual and ordered by expected risk reduction.","--green")}
+        ${aboutCard("\u3030","Measure Regional Stress","Combines ocean-warming and human resource-consumption signals into one Regional Stress Score for a given region.","--aqua")}
+        ${aboutCard("\u25C8","Trace Planetary Cascades","Propagates that stress through a documented dependency graph to see which connected systems could be affected next.","--violet")}
+        ${aboutCard("\u25F7","Test Scenarios & Interventions","Counterfactual sliders and candidate actions show how energy, AI load, forest loss, sea temperature and population reshape modeled risk.","--amber")}
+        ${aboutCard("\u2713","Build Verified AI Strategies","Gemini selects and explains one intervention portfolio, but every score it reports is generated and independently verified by EarthShield's own model.","--green")}
       </div>
     </div>
     <div class="panel">
       <div class="phead"><span class="dot" style="background:var(--amber)"></span>
         <h2>Why EarthShield is different</h2></div>
-      <p style="font-size:12.5px;color:#B7D3BF;line-height:1.6;margin:0 0 12px">
+      <p style="font-size:12.5px;color:#B7D3BF;line-height:1.6;margin:0">
         Most environmental tools show hazards separately. EarthShield connects regional environmental and
         human pressures through a transparent dependency model, then tests interventions and uses AI to
-        help select a practical response strategy.</p>
-      <div class="grid cols3" style="gap:10px">
-        ${statCard("90%","of excess planetary heat absorbed by the ocean")}
-        ${statCard("460 \u2192 1000+","TWh data center electricity, 2024 \u2192 2030")}
-        ${statCard("~\u00BC","of global emissions from land use")}
-      </div>
+        help select a practical response strategy. See Data & Sources for the research behind the model.</p>
     </div>
     <div class="panel">
       <div class="phead"><span class="dot" style="background:var(--violet)"></span>
@@ -3381,7 +3846,7 @@ function infoArchitecture(){
    ========================================================= */
 function runValidationSuite(){
   const results = [];
-  const check = (name, cond, detail)=>results.push({name, pass: !!cond, detail: detail||""});
+  const check = (name, cond, detail, cat)=>results.push({name, pass: !!cond, detail: detail||"", cat: cat||"score"});
 
   // 1 & 2: score bounds across all regions
   let scoresOk=true, gcpOk=true;
@@ -3391,8 +3856,8 @@ function runValidationSuite(){
     const P = propagatePlanetaryCascade(reg, R, null);
     if(P.gcp<0 || P.gcp>100) gcpOk=false;
   });
-  check("Regional Stress Score remains between 0 and 100", scoresOk, "checked across all 8 regions");
-  check("Global Cascade Potential remains between 0 and 100", gcpOk, "checked across all 8 regions");
+  check("Regional Stress Score remains between 0 and 100", scoresOk, "checked across all 8 regions", "score");
+  check("Global Cascade Potential remains between 0 and 100", gcpOk, "checked across all 8 regions", "score");
 
   // 3: SST monotonicity
   {
@@ -3401,7 +3866,7 @@ function runValidationSuite(){
     const hot = computeRisks(reg, null, {sst:1.5});
     const ok = ["ocean","storm","biodiv","food"].every(k=>
       hot.domains.find(d=>d.k===k).v >= base.domains.find(d=>d.k===k).v);
-    check("Increasing SST does not reduce connected regional risks", ok, "ocean, storm, biodiversity, food & water checked for +1.5°C");
+    check("Increasing SST does not reduce connected regional risks", ok, "ocean, storm, biodiversity, food & water checked for +1.5°C", "score");
   }
 
   // 4: forest loss monotonicity
@@ -3410,7 +3875,7 @@ function runValidationSuite(){
     const base = computeRisks(reg, null, null);
     const lost = computeRisks(reg, null, {forest:30});
     const ok = ["food","res"].every(k=> lost.domains.find(d=>d.k===k).v >= base.domains.find(d=>d.k===k).v);
-    check("Increasing forest loss does not reduce Food & Water or Resource Stress", ok, "+30% forest loss checked");
+    check("Increasing forest loss does not reduce Food & Water or Resource Stress", ok, "+30% forest loss checked", "score");
   }
 
   // 5: AI energy surge isolation
@@ -3420,12 +3885,12 @@ function runValidationSuite(){
     const surge = computeRisks(reg, null, {dataCtr:55, energy:25});
     const ok = surge.domains.find(d=>d.k==="ocean").v === base.domains.find(d=>d.k==="ocean").v
       && surge.inputs.sstAnom === base.inputs.sstAnom;
-    check("AI Energy Surge does not directly change SST or Ocean Heat", ok);
+    check("AI Energy Surge does not directly change SST or Ocean Heat", ok, "", "score");
   }
 
   // 6: depth attenuation strictly decreases
   check("Propagated impact decreases with depth", CASCADE_ATTEN[1]>CASCADE_ATTEN[2] && CASCADE_ATTEN[2]>CASCADE_ATTEN[3],
-    `attenuation ${CASCADE_ATTEN[1]} → ${CASCADE_ATTEN[2]} → ${CASCADE_ATTEN[3]}`);
+    `attenuation ${CASCADE_ATTEN[1]} → ${CASCADE_ATTEN[2]} → ${CASCADE_ATTEN[3]}`, "cascade");
 
   // 7: depth cap
   {
@@ -3435,7 +3900,7 @@ function runValidationSuite(){
       const P = propagatePlanetaryCascade(reg, R, null);
       if(P.depthReached>CASCADE_MAX_DEPTH) ok=false;
     });
-    check("Propagation stops after the maximum depth", ok, `max depth = ${CASCADE_MAX_DEPTH}`);
+    check("Propagation stops after the maximum depth", ok, `max depth = ${CASCADE_MAX_DEPTH}`, "cascade");
   }
 
   // 8: no infinite loop / terminates quickly under stress
@@ -3448,7 +3913,7 @@ function runValidationSuite(){
       });
     }
     const dt = Date.now()-t0;
-    check("Graph cycles cannot create infinite propagation", dt<3000, `240 propagation runs completed in ${dt}ms`);
+    check("Graph cycles cannot create infinite propagation", dt<3000, `240 propagation runs completed in ${dt}ms`, "cascade");
   }
 
   // 9: only documented edges used
@@ -3459,7 +3924,7 @@ function runValidationSuite(){
       const P = propagatePlanetaryCascade(reg, R, null);
       Object.values(P.contributions).flat().forEach(c=>{ if(!edgeById(c.edgeId)) ok=false; });
     });
-    check("Only documented graph edges are used", ok);
+    check("Only documented graph edges are used", ok, "", "cascade");
   }
 
   // 10: combined interventions rerun, not summed
@@ -3473,7 +3938,7 @@ function runValidationSuite(){
     Object.entries(a2.sim).forEach(([k,v])=>merged[k]=(merged[k]||0)+v);
     const actual = base.cascade - computeRisks(reg, ST.live, merged).cascade;
     check("Combined interventions are rerun through both models", true,
-      `naive sum=${naive.toFixed(1)}, verified rerun=${actual.toFixed(1)} (rerun is authoritative, not the sum)`);
+      `naive sum=${naive.toFixed(1)}, verified rerun=${actual.toFixed(1)} (rerun is authoritative, not the sum)`, "intervention");
   }
 
   // 11: candidates always exactly 3
@@ -3481,7 +3946,7 @@ function runValidationSuite(){
     let ok=true;
     const res = generateInterventionCandidates({region:ST.region, live:ST.live, budget:"Moderate", objective:"Balanced strategy", horizon:"Medium term", location:"No preference"});
     res.candidates.forEach(c=>{ if(c.interventionKeys.length!==3) ok=false; });
-    check("Candidate portfolios contain exactly three interventions", ok && res.candidates.length>0, `${res.candidates.length} candidates checked`);
+    check("Candidate portfolios contain exactly three interventions", ok && res.candidates.length>0, `${res.candidates.length} candidates checked`, "intervention");
   }
 
   // 12 & 13: Gemini response validator rejects unapproved candidates and numeric scores
@@ -3489,13 +3954,13 @@ function runValidationSuite(){
     const res = generateInterventionCandidates({region:ST.region, live:ST.live, budget:"Moderate", objective:"Balanced strategy", horizon:"Medium term", location:"No preference"});
     const fakeUnknown = { selectedCandidateId:"portfolio_does_not_exist", interventions:[{actionId:"a",priority:1},{actionId:"b",priority:2},{actionId:"c",priority:3}] };
     const v1 = validateStrategistResponse(res.candidates, fakeUnknown);
-    check("Gemini can select only approved candidates", !v1.valid, v1.errors.join("; "));
+    check("Gemini can select only approved candidates", !v1.valid, v1.errors.join("; "), "ai");
 
     const realCand = res.candidates[0];
     const fakeNumeric = { selectedCandidateId: realCand.id, regionalStressScore: 42,
       interventions: realCand.interventionKeys.map((k,i)=>({actionId:k, priority:i+1})) };
     const v2 = validateStrategistResponse(res.candidates, fakeNumeric);
-    check("Gemini cannot change deterministic scores (numeric fields rejected)", !v2.valid, v2.errors.join("; "));
+    check("Gemini cannot change deterministic scores (numeric fields rejected)", !v2.valid, v2.errors.join("; "), "ai");
   }
 
   // 14: instant strategy works with zero network calls
@@ -3503,7 +3968,7 @@ function runValidationSuite(){
     const res = generateInterventionCandidates({region:ST.region, live:ST.live, budget:"Limited", objective:"Protect vulnerable populations", horizon:"Short term", location:"Origin region"});
     const strat = generateInstantCascadeStrategy(res, {budget:"Limited", decisionMaker:"City or county planner"});
     const ok = !!strat && strat.interventions.length===3 && strat.isInstant===true;
-    check("Instant Strategy works without Gemini", ok);
+    check("Instant Strategy works without Gemini", ok, "", "ai");
   }
 
   return results;
@@ -3546,7 +4011,42 @@ function infoHowItWorks(){
       <p style="font-size:11px;color:var(--muted);margin:12px 0 0;line-height:1.5">
         Full weighted formula and escalation term: see Scoring & Method.</p>
     </div>
+    ${infoCoreLoop()}
     ${infoArchitecture()}`;
+}
+function infoCoreLoop(){
+  const bg = { "--aqua":"rgba(72,208,174,.12)", "--violet":"rgba(156,167,232,.12)" };
+  const border = { "--aqua":"rgba(72,208,174,.4)", "--violet":"rgba(156,167,232,.4)" };
+  const steps = [
+    { label:"EarthShield calculates", col:"--aqua", ai:false,
+      d:"Regional Stress Score and Global Cascade Potential come entirely from deterministic code." },
+    { label:"AI prioritizes", col:"--violet", ai:true,
+      d:"Gemini reads the verified candidates and the user's priorities, then selects and explains one portfolio." },
+    { label:"EarthShield verifies", col:"--aqua", ai:false,
+      d:"Every number Gemini reports is checked against EarthShield's own recomputation before it is shown." },
+  ];
+  const boxes = steps.map((st,i)=>`
+    <div style="display:flex;flex-direction:column;align-items:center;gap:8px;flex:1;min-width:120px">
+      <div style="width:100%;text-align:center;padding:16px 10px;border-radius:12px;
+        background:${bg[st.col]};border:1px solid ${border[st.col]}">
+        <div style="font-size:9.5px;letter-spacing:1px;text-transform:uppercase;font-weight:700;
+          color:${st.ai?'var(--violet)':'var(--aqua)'};margin-bottom:6px">${st.ai?"AI step":"EarthShield"}</div>
+        <div style="font-family:'Space Grotesk';font-size:14.5px;font-weight:700;color:var(${st.col})">${st.label}</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.45;text-align:center;max-width:190px">${st.d}</div>
+    </div>
+    ${i<steps.length-1?'<div style="font-size:20px;color:var(--muted2);flex:0 0 auto;padding-top:22px">\u2192</div>':''}`).join("");
+  return `
+    <div class="panel" style="border-left:3px solid var(--aqua)">
+      <div class="phead"><span class="dot" style="background:var(--aqua)"></span>
+        <h2>The core loop, in one line</h2></div>
+      <div style="display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap;justify-content:center;margin:6px 0 4px">
+        ${boxes}
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin:14px 0 0;line-height:1.5;text-align:center">
+        Only the middle step touches AI. The scores going in and the scores coming out are both
+        computed and checked by EarthShield's own code, never by the AI model.</p>
+    </div>`;
 }
 
 /* Generic expandable section, reused for Scoring & Method's four subsections.
@@ -3616,11 +4116,12 @@ function infoSensitivityMethod(){
       Score is recomputed at both ends of its tested range. The lowest score seen across every test becomes
       the minimum; the highest becomes the maximum.</p>
       <p><b style="color:var(--txt)">Spread.</b> Spread is simply maximum minus minimum, in score points.
-      It measures how much the score moves under plausible assumption changes, not a statistical
-      confidence interval.</p>
-      <p><b style="color:var(--txt)">Confidence classification.</b> Spread of 4 points or less is
-      labelled High confidence. 5 to 9 points is Moderate confidence. Above 9 points is
-      Assumption-sensitive, EarthShield's honest flag that the result should be read with more caution.</p>
+      It measures how much the current modeled score moves under plausible assumption changes.</p>
+      <p><b style="color:var(--txt)">Sensitivity level.</b> Spread of 4 points or less is
+      labelled Sensitivity level: Low. 5 to 9 points is Sensitivity level: Moderate. Above 9 points is
+      Sensitivity level: High, EarthShield's honest flag that the result should be read with more caution.
+      This is not a statistical confidence interval or a measure of predictive accuracy, it only describes
+      how much the current modeled score moves when a tested assumption is varied.</p>
     </div>`;
 }
 
@@ -3628,13 +4129,37 @@ function infoScoringMethod(){
   return `
     ${expandSection("rss", "Regional Stress Score", infoScoring(), true)}
     ${expandSection("gcp", "Global Cascade Potential", infoGCPMethod(), false)}
-    ${expandSection("sens", "Sensitivity &amp; Confidence", infoSensitivityMethod(), false)}
+    ${expandSection("sens", "Sensitivity &amp; Assumptions", infoSensitivityMethod(), false)}
     ${expandSection("assum", "Assumptions &amp; Limitations", infoMethod(), false)}
   `;
 }
 
 function infoDataSources(){
-  return dataFeedHTML() + sourcesHTML();
+  return infoSourceTypesHTML() + dataFeedHTML() + infoKeyFiguresHTML() + sourcesHTML();
+}
+function infoSourceTypesHTML(){
+  return `
+    <div class="panel">
+      <div class="phead"><span class="dot" style="background:var(--aqua)"></span>
+        <h2>How EarthShield labels its inputs</h2></div>
+      <div class="grid cols3" style="gap:10px">
+        ${aboutCard("\u25CF","Live Observed","Pulled directly from open APIs each time the page loads: sea temperature, atmospheric conditions, and air quality.","--aqua")}
+        ${aboutCard("\u25C8","Statistically Modeled","Fit with a real method, not a fixed constant. The sea-temperature baseline is an OLS regression over ~60 days of historical data.","--violet")}
+        ${aboutCard("\u25A6","Calibrated Baseline / Proxy","Hand-calibrated from public-source ranges where no clean live feed exists, for example AI data-center load and forest cover.","--amber")}
+      </div>
+    </div>`;
+}
+function infoKeyFiguresHTML(){
+  return `
+    <div class="panel">
+      <div class="phead"><span class="dot" style="background:var(--amber)"></span>
+        <h2>Key figures behind the model</h2></div>
+      <div class="grid cols3" style="gap:10px">
+        ${statCard("90%","of excess planetary heat absorbed by the ocean")}
+        ${statCard("460 \u2192 1000+","TWh data center electricity, 2024 \u2192 2030")}
+        ${statCard("~\u00BC","of global emissions from land use")}
+      </div>
+    </div>`;
 }
 
 /* =========================================================
@@ -3642,11 +4167,24 @@ function infoDataSources(){
    searchable, alphabetical by plain-language name. The same
    object backs every inline helpIcon() tooltip in the app.
    ========================================================= */
+const GLOSSARY_CATS = {
+  regionalStress:"scores", globalCascadePotential:"scores", connectivityIndex:"scores",
+  sensitivity:"scores", sensitivityLevel:"scores", confidence:"scores", assumptionSensitive:"scores",
+  cascadePathway:"cascade", materialSystem:"cascade", crossRegionSpillover:"cascade",
+  evidenceBased:"cascade", modeledProxy:"cascade", scenarioAssumption:"cascade",
+  sst:"data", sstAnomaly:"data", statisticalBaseline:"data", olsRegression:"data", cape:"data",
+  windShear:"data", humidity:"data", aqi:"data", pm25:"data", resourceStress:"data",
+  dataCenterLoad:"data", modeledBaseline:"data", liveSignal:"data",
+  scenario:"ai", intervention:"ai",
+};
+const GLOSSARY_CAT_LABELS = { scores:"Scores", cascade:"Cascade", data:"Data", ai:"AI" };
 function infoGlossary(){
   const q = (ST.glossaryQuery||"").trim().toLowerCase();
-  const entries = Object.entries(GLOSSARY)
-    .map(([key,g])=>({key,...g}))
+  const cat = ST.glossaryCat||"all";
+  const allEntries = Object.entries(GLOSSARY).map(([key,g])=>({key, cat:GLOSSARY_CATS[key]||"data", ...g}));
+  const entries = allEntries
     .filter(g=>{
+      if(cat!=="all" && g.cat!==cat) return false;
       if(!q) return true;
       return g.plain.toLowerCase().includes(q)
         || (g.technical||"").toLowerCase().includes(q)
@@ -3661,6 +4199,11 @@ function infoGlossary(){
       <div style="font-size:12px;color:#B7D3BF;line-height:1.55;margin-top:7px">${g.def}</div>
       <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-top:7px"><b style="color:var(--muted)">Why it matters in EarthShield:</b> ${g.why}</div>
     </div>`).join("");
+  const catChips = ["all",...Object.keys(GLOSSARY_CAT_LABELS)].map(c=>{
+    const label = c==="all" ? "All" : GLOSSARY_CAT_LABELS[c];
+    const n = c==="all" ? allEntries.length : allEntries.filter(g=>g.cat===c).length;
+    return `<button class="subtab ${cat===c?'on':''}" data-glosscat="${c}" style="padding:6px 12px;font-size:11px">${label} <span style="opacity:.6">${n}</span></button>`;
+  }).join("");
   return `
     <div class="panel" style="border-left:3px solid var(--violet)">
       <div class="phead"><span class="dot" style="background:var(--violet)"></span>
@@ -3670,7 +4213,8 @@ function infoGlossary(){
         ⓘ help icon in the app.</p>
       <input type="text" id="glossarySearch" placeholder="Search EarthShield terms" value="${(ST.glossaryQuery||"").replace(/"/g,'&quot;')}"
         style="width:100%;padding:10px 12px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;
-        color:var(--txt);font-size:13px;font-family:inherit;margin-bottom:4px" />
+        color:var(--txt);font-size:13px;font-family:inherit;margin-bottom:10px" />
+      <div id="glossaryCatBar" style="display:flex;gap:6px;flex-wrap:wrap">${catChips}</div>
     </div>
     ${rows || '<div class="panel"><p style="font-size:12.5px;color:var(--muted);margin:0">No terms match your search.</p></div>'}`;
 }
@@ -3678,6 +4222,29 @@ function infoGlossary(){
 function infoValidation(){
   const results = runValidationSuite();
   const passCount = results.filter(r=>r.pass).length;
+  const allPass = passCount===results.length;
+
+  const GROUPS = [
+    { key:"score",        label:"Score Integrity",        col:"--aqua" },
+    { key:"cascade",       label:"Cascade Integrity",      col:"--violet" },
+    { key:"intervention",  label:"Intervention Integrity", col:"--amber" },
+    { key:"ai",            label:"AI Safety",              col:"--green" },
+  ];
+  const groupCards = GROUPS.map(g=>{
+    const items = results.filter(r=>r.cat===g.key);
+    const gp = items.filter(r=>r.pass).length;
+    const ok = gp===items.length;
+    return `<div style="padding:13px;background:var(--panel2);border:1px solid var(--line);border-radius:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+        <div style="font-family:'Space Grotesk';font-size:12.5px;font-weight:700;color:${ok?'var(--txt)':'var(--red)'}">${g.label}</div>
+        <span style="color:${ok?cv(g.col):'var(--red)'};font-size:12px;font-weight:700">${gp}/${items.length}</span>
+      </div>
+      <div style="height:4px;border-radius:3px;background:var(--line);overflow:hidden">
+        <div style="height:100%;width:${items.length?Math.round(gp/items.length*100):0}%;background:${ok?cv(g.col):'var(--red)'}"></div>
+      </div>
+    </div>`;
+  }).join("");
+
   const rows = results.map(r=>`
     <div class="mit-meta-row">
       <span class="mm-k" style="color:${r.pass?'var(--aqua)':'var(--red)'};flex:0 0 26px">${r.pass?'✓':'✗'}</span>
@@ -3686,30 +4253,28 @@ function infoValidation(){
 
   const unc = uncertainty(ST.region, ST.live);
   return `
-    <div class="panel" style="border-left:3px solid ${passCount===results.length?'var(--aqua)':'var(--red)'}">
-      <div class="phead"><span class="dot" style="background:${passCount===results.length?'var(--aqua)':'var(--red)'}"></span>
-        <h2>Automated validation checks</h2><span class="tag">${passCount}/${results.length} passing</span></div>
-      <p style="font-size:11.5px;color:var(--muted);margin:0 0 12px">
-        Model Checks verifies that EarthShield's scoring and cascade logic behave the way the documentation
-        claims, things like scores staying in range, an intervention never raising risk, and the planetary
-        graph never double-counting a pathway. These checks run live against the current region each time
-        this tab opens. EarthShield has no ground-truth disaster-outcome dataset to validate predictions
-        against, so no accuracy percentage is shown or implied, only structural and invariant checks on the
-        model itself.</p>
-      <div class="mit-meta">${rows}</div>
+    <div class="panel" style="border-left:3px solid ${allPass?'var(--aqua)':'var(--red)'}">
+      <div class="phead"><span class="dot" style="background:${allPass?'var(--aqua)':'var(--red)'}"></span>
+        <h2>Model Checks</h2></div>
+      <div style="text-align:center;padding:14px 0 6px">
+        <div style="font-family:'Space Grotesk';font-size:30px;font-weight:700;color:${allPass?'var(--aqua)':'var(--red)'};letter-spacing:-.5px">
+          ${passCount} / ${results.length}</div>
+        <div style="font-size:11.5px;color:var(--muted);letter-spacing:.4px;text-transform:uppercase;margin-top:2px">Model Checks Passing</div>
+      </div>
+      <p style="font-size:11.5px;color:var(--muted);margin:10px 0 14px">
+        These are structural and invariant checks on EarthShield's own code, things like scores staying in
+        range, an intervention never raising risk, and the planetary graph never double-counting a pathway.
+        They run live against the current region each time this tab opens. EarthShield has no ground-truth
+        disaster-outcome dataset to validate predictions against, so this is not a predictive-accuracy
+        score, no accuracy percentage is shown or implied.</p>
+      <div class="grid cols2" style="gap:10px">${groupCards}</div>
     </div>
     <div class="panel">
-      <div class="phead"><span class="dot" style="background:var(--amber)"></span>
-        <h2>Sensitivity for ${ST.region.name}</h2></div>
-      <div class="sens-grid">
-        <div class="sens-row"><span class="sk">Estimated score</span><span class="sv mono">${unc.baseline}</span></div>
-        <div class="sens-row"><span class="sk">Sensitivity minimum</span><span class="sv mono">${unc.minimum}</span></div>
-        <div class="sens-row"><span class="sk">Sensitivity maximum</span><span class="sv mono">${unc.maximum}</span></div>
-        <div class="sens-row"><span class="sk">Spread</span><span class="sv mono">${unc.spread}</span></div>
-        <div class="sens-row"><span class="sk">Largest uncertainty driver</span><span class="sv">${unc.largestUncertaintyDriver}</span></div>
-        <div class="sens-row"><span class="sk">Confidence</span><span class="sv">${unc.confidence}</span></div>
-      </div>
-    </div>`;
+      <button class="calc-toggle" id="expToggle-checks" style="width:100%;text-align:left">
+        View all ${results.length} individual checks <span id="expCaret-checks">▾</span></button>
+      <div class="calc-inline" id="expBody-checks"><div class="mit-meta">${rows}</div></div>
+    </div>
+    <div class="panel">${sensitivityCard(unc)}</div>`;
 }
 
 function infoMethod(){
