@@ -184,7 +184,7 @@ main{flex:1 1 auto;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:
 
 /* hotspot map */
 .hotspot{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#072622}
-.hot-map{width:100%;aspect-ratio:2/1;line-height:0}
+.hot-map{width:100%;aspect-ratio:2/1;line-height:0;position:relative}
 .hot-map svg{width:100%;height:100%}
 .hot-meta{display:flex;flex-wrap:wrap;gap:14px;padding:13px 14px;border-top:1px solid var(--line)}
 .hot-meta > div{display:flex;flex-direction:column;gap:3px}
@@ -416,6 +416,20 @@ input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;bac
 .link-btn:hover{color:var(--txt)}
 .score-sub{font-size:10.5px;color:var(--muted2);margin-top:2px;line-height:1.4;max-width:180px}
 
+/* ---------- Overview -> Snapshot: RSS/GCP flow row, weighted insight-card rows ---------- */
+.rss-gcp-row{display:flex;flex-direction:column;gap:10px;align-items:stretch;margin-bottom:14px}
+.score-block{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);border-radius:12px;
+  padding:14px;display:flex;align-items:center;gap:14px}
+.flow-arrow{flex:0 0 auto;display:flex;align-items:center;justify-content:center;gap:7px;color:var(--muted2);padding:2px 0}
+.flow-dots{display:none}
+.flow-dots i{width:4px;height:4px;border-radius:50%;background:var(--line);display:block}
+@media(min-width:880px){
+  .rss-gcp-row{flex-direction:row;align-items:stretch}
+  .flow-dots{display:grid;grid-template-columns:repeat(2,4px);grid-auto-rows:4px;gap:4px}
+}
+@media(max-width:879px){ .flow-arrow svg{transform:rotate(90deg)} }
+.insight-ic{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;flex:0 0 auto}
+
 .tip{position:relative;display:inline-block;color:var(--muted);cursor:help;font-size:12px;margin-left:5px}
 /* Centered under the icon with a viewport-capped width so a help icon placed near
    either screen edge never pushes the tooltip past the viewport and introduces
@@ -608,6 +622,12 @@ const REGIONS = [
   {id:"chennai", name:"India SE Coast (Chennai)",lat:13.08, lon:80.27, grid:"IN-S",
    b:{coastPop:.95, coastExp:.84, energy:.6,  dataCtr:.52, forest:.16, mining:.5,  industry:.78, water:.83, sstClim:29.0}},
 ];
+
+/* short geographic sublabels for Region & Data's regional-lens card */
+const REGION_SUBLABEL = {
+  miami:"Southeast USA", njcoast:"Mid-Atlantic, USA", gulf:"Gulf Coast, USA", houston:"Gulf Coast, USA",
+  bangla:"South Asia", manila:"Southeast Asia", carib:"Caribbean", chennai:"South Asia",
+};
 
 /* live state per session */
 const ST = {
@@ -1773,23 +1793,105 @@ function buildOverview(R){
 }
 
 /* ---- Overview -> Snapshot: understandable in ~10 seconds ---- */
+function earthWatermarkSVG(){
+  // Back to the v12 composition (flat ocean sphere, curved lat/long grid, orbiting ring, glowing
+  // signal nodes + arcs) which tested well. The only change from v12: continents are now rendered
+  // twice -- a dark offset duplicate underneath, then the real aqua landmass on top -- to read as
+  // raised/embossed "sticker" continents (like the reference photo) instead of flat silhouettes.
+  // Land is still the SAME real low-poly coastline data used by the functional map in Region &
+  // Data's hotspotMap() (worldLandPaths()). Note: we only have continent-level outlines, not real
+  // country border data, so no per-country lines are drawn -- adding invented borders would misrepresent
+  // the geography. Purely decorative: aria-hidden and pointer-events:none.
+  const oldCx=120, oldCy=120, oldR=104, oldScale=0.66667, oldTx=-120, oldTy=0;
+  const cx=200, cy=200, r=186;
+  const k=r/oldR, s=k*oldScale;
+  const tx=(k*oldTx + (cx-oldCx*k)).toFixed(2);
+  const ty=(k*oldTy + (cy-oldCy*k)).toFixed(2);
+  const shTx=(parseFloat(tx)+2.6).toFixed(2);
+  const shTy=(parseFloat(ty)+3.4).toFixed(2);
+  const sw=(1.4*k).toFixed(2);
+  const nodes=[[186,69],[232,88],[196,140],[222,176],[176,206]];
+  const dotsSVG = nodes.map(p=>`<circle cx="${p[0]}" cy="${p[1]}" r="3.4" fill="#B9F5DF"/>`).join("");
+  const arcsSVG = nodes.slice(0,-1).map((p,i)=>{
+    const n=nodes[i+1];
+    const mx=(p[0]+n[0])/2, my=(p[1]+n[1])/2-16;
+    return `<path d="M${p[0]} ${p[1]} Q${mx} ${my} ${n[0]} ${n[1]}" stroke="#B9F5DF" stroke-width="1" fill="none" opacity=".6"/>`;
+  }).join("");
+  return `<svg viewBox="0 0 400 400" preserveAspectRatio="xMidYMid meet"
+      style="position:absolute;top:-46px;right:-46px;width:58%;max-width:460px;aspect-ratio:1/1;opacity:.92;pointer-events:none;z-index:0" aria-hidden="true">
+    <defs><clipPath id="earthClip"><circle cx="${cx}" cy="${cy}" r="${r}"/></clipPath></defs>
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="#08201A" opacity=".72"/>
+    <g clip-path="url(#earthClip)">
+      <g transform="translate(${shTx},${shTy}) scale(${s.toFixed(4)})" fill="#04140F" opacity=".5" stroke="none">
+        ${worldLandPaths()}
+      </g>
+      <g transform="translate(${tx},${ty}) scale(${s.toFixed(4)})" fill="var(--aqua)" opacity=".72"
+         stroke="#0B5B47" stroke-width="${sw}" stroke-linejoin="round">
+        ${worldLandPaths()}
+      </g>
+      ${arcsSVG}
+      ${dotsSVG}
+    </g>
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--aqua)" stroke-width="2" opacity=".55"/>
+    <ellipse cx="${cx}" cy="${cy}" rx="${r}" ry="${r*0.35}" fill="none" stroke="var(--aqua)" stroke-width="1" opacity=".3"/>
+    <ellipse cx="${cx}" cy="${cy}" rx="${r}" ry="${r*0.7}" fill="none" stroke="var(--aqua)" stroke-width="1" opacity=".25"/>
+    <ellipse cx="${cx}" cy="${cy}" rx="${r*0.35}" ry="${r}" fill="none" stroke="var(--aqua)" stroke-width="1" opacity=".3"/>
+    <ellipse cx="${cx}" cy="${cy}" rx="${r*0.7}" ry="${r}" fill="none" stroke="var(--aqua)" stroke-width="1" opacity=".25"/>
+    <line x1="${cx}" y1="${cy-r}" x2="${cx}" y2="${cy+r}" stroke="var(--aqua)" stroke-width="1" opacity=".25"/>
+    <ellipse cx="${cx}" cy="${cy}" rx="${r+50}" ry="${r*0.4}" fill="none" stroke="var(--violet)" stroke-width="1.4" opacity=".32" transform="rotate(-10 ${cx} ${cy})"/>
+    <circle cx="${cx-r-38}" cy="${cy+18}" r="4.5" fill="var(--violet)" opacity=".7"/>
+  </svg>`;
+}
+
 function overviewSnapshot(R){
   const bnd = band(R.cascade);
   const prop = propagatePlanetaryCascade(ST.region, R, null);
   const topDomain = [...R.domains].sort((a,b)=>b.v-a.v)[0];
-  const pathwayTxt = prop.strongestPath ? prop.strongestPath.labels.join(" → ") : "No dominant pathway at current levels";
+  const pathwayTxt = prop.strongestPath ? prop.strongestPath.labels.join(" \u2192 ") : "No dominant pathway at current levels";
   const topAction = mitigations(ST.region, ST.live).list[0];
+  const icChip = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="6" y="6" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+  const icShare = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="6" cy="12" r="2.6" stroke="currentColor" stroke-width="1.8"/><circle cx="18" cy="6" r="2.6" stroke="currentColor" stroke-width="1.8"/><circle cx="18" cy="18" r="2.6" stroke="currentColor" stroke-width="1.8"/><path d="M8.3 10.8L15.7 7.2M8.3 13.2L15.7 16.8" stroke="currentColor" stroke-width="1.8"/></svg>`;
+  const icLayers = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 3l9 5-9 5-9-5 9-5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 13l9 5 9-5" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
+  const icLeaf = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M20 4C10 4 4 10 4 20c10 0 16-6 16-16z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M20 4L9 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+  const decoSpark = `<svg width="58" height="26" viewBox="0 0 58 26" fill="none"><path d="M2 21 L11 15 L19 18 L27 9 L36 12 L46 4 L56 5" stroke="var(--aqua)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="56" cy="5" r="2.4" fill="var(--aqua)"/></svg>`;
+  const decoNodes = `<svg width="44" height="44" viewBox="0 0 44 44" fill="none">
+    <circle cx="22" cy="11" r="6.5" fill="rgba(156,167,232,.16)" stroke="var(--violet)" stroke-width="1.3"/>
+    <circle cx="9" cy="32" r="5.5" fill="rgba(156,167,232,.12)" stroke="var(--violet)" stroke-width="1.1"/>
+    <circle cx="35" cy="32" r="5.5" fill="rgba(156,167,232,.12)" stroke="var(--violet)" stroke-width="1.1"/>
+    <path d="M22 17.5 L11.5 27M22 17.5 L32.5 27" stroke="var(--violet)" stroke-width="1.1"/>
+  </svg>`;
+  const ICON_BG = {"--aqua":"rgba(72,208,174,.16)", "--violet":"rgba(156,167,232,.16)", "--green":"rgba(127,216,154,.16)"};
+  const insightCard = (ic, col, label, value, sub, deco)=>`
+    <div class="insight-card" style="display:flex;gap:10px;align-items:center;justify-content:space-between">
+      <div style="display:flex;gap:10px;align-items:flex-start;min-width:0;flex:1">
+        <div class="insight-ic" style="background:${ICON_BG[col]||"rgba(255,255,255,.08)"};color:${cv(col)}">${ic}</div>
+        <div style="min-width:0;flex:1">
+          <div class="ik">${label}</div>
+          <div class="iv">${value}</div>
+          ${sub?`<div class="score-sub" style="max-width:none;margin-top:3px">${sub}</div>`:""}
+        </div>
+      </div>
+      ${deco?`<div style="flex:0 0 auto;opacity:.9">${deco}</div>`:""}
+    </div>`;
   return `
-    <div class="panel" style="border-left:3px solid var(--violet)">
-      <div style="font-family:'Space Grotesk';font-size:18px;font-weight:700;margin:0 0 6px;letter-spacing:-.2px">
-        One regional pressure can create wider system consequences.</div>
-      <p style="font-size:12.5px;color:#B7D3BF;line-height:1.6;margin:0 0 16px">
-        EarthShield combines live environmental signals with transparent cascade modeling to show how stress
-        in one region can affect connected environmental, infrastructure, resource, and human systems.</p>
+    <div class="panel" style="border-left:3px solid var(--violet);position:relative;overflow:hidden">
+      ${earthWatermarkSVG()}
+      <div style="position:relative;z-index:1">
+      <div style="max-width:55%;min-width:230px">
+        <div style="display:inline-flex;align-items:center;gap:7px;margin:0 0 10px;padding:4px 10px 4px 8px;border:1px solid rgba(72,208,174,.35);border-radius:20px;background:rgba(72,208,174,.08)">
+          <span style="width:6px;height:6px;border-radius:50%;background:var(--aqua)"></span>
+          <span style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--aqua);font-weight:700">EarthShield &middot; Environmental Risk Intelligence</span>
+        </div>
+        <div style="font-family:'Space Grotesk';font-size:18px;font-weight:700;margin:0 0 6px;letter-spacing:-.2px">
+          One regional stress can cascade across connected systems.</div>
+        <p style="font-size:12.5px;color:#B7D3BF;line-height:1.6;margin:0 0 16px">
+          EarthShield combines live environmental signals with transparent cascade modeling to show how stress
+          in one region can affect connected systems at local and global scales.</p>
+      </div>
 
-      <div class="grid cols2" style="gap:16px;margin-bottom:14px">
-        <div style="display:flex;align-items:center;gap:14px;min-width:0">
-          ${ringSVG(R.cascade, {label:"Regional Stress", size:100})}
+      <div class="rss-gcp-row">
+        <div class="score-block">
+          ${ringSVG(R.cascade, {label:"Regional Stress", size:96})}
           <div style="min-width:0">
             <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Regional Stress Score ${helpIcon("regionalStress")}</div>
             <div class="score-sub">How much combined pressure is affecting this region?</div>
@@ -1798,9 +1900,14 @@ function overviewSnapshot(R){
             <div class="score-sub" style="margin-top:4px">${bnd.d}</div>
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:14px;min-width:0">
-          ${ringSVG(prop.gcp, {label:"Cascade Potential", bandFn:gcpBand, size:100})}
+        <div class="flow-arrow">
+          <div class="flow-dots"><i></i><i></i><i></i><i></i></div>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 12h14M13 6l6 6-6 6" stroke="var(--aqua)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="score-block">
+          ${ringSVG(prop.gcp, {label:"Cascade Potential", bandFn:gcpBand, size:96})}
           <div style="min-width:0">
+            <div style="font-size:9px;color:var(--violet);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:2px">Downstream effect</div>
             <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Global Cascade Potential ${helpIcon("globalCascadePotential")}</div>
             <div class="score-sub">How far could that stress spread through connected systems?</div>
             <div style="font-family:'Space Grotesk';font-size:13.5px;font-weight:600;color:${cv(prop.band.c)};margin-top:5px">${prop.band.t}</div>
@@ -1810,21 +1917,107 @@ function overviewSnapshot(R){
         </div>
       </div>
 
-      <div class="grid cols2" style="gap:10px;margin-bottom:16px">
-        <div class="insight-card"><div class="ik">Main driver</div><div class="iv">${topDomain.nm} · ${topDomain.v}</div></div>
-        <div class="insight-card"><div class="ik">Strongest pathway</div><div class="iv">${pathwayTxt}</div></div>
-        <div class="insight-card"><div class="ik">Wider system impact</div><div class="iv">${prop.affectedNodes.length} materially affected system${prop.affectedNodes.length===1?'':'s'}</div></div>
-        <div class="insight-card"><div class="ik">Recommended intervention</div><div class="iv">${topAction?topAction.nm:"n/a"}</div></div>
+      <div class="grid cols2" style="margin-bottom:10px">
+        ${insightCard(icChip, "--aqua", "Main driver", `${topDomain.nm} \u00B7 ${topDomain.v}`, "Primary contributor to regional stress.", decoSpark)}
+        ${insightCard(icShare, "--violet", "Strongest pathway", pathwayTxt, "Most sensitive cascade route identified by the model.", decoNodes)}
+      </div>
+      <div class="grid cols2" style="margin-bottom:16px">
+        ${insightCard(icLayers, "--aqua", "Affected systems", `${prop.affectedNodes.length} materially affected system${prop.affectedNodes.length===1?'':'s'}`, "Across infrastructure, resources, and services.")}
+        ${insightCard(icLeaf, "--green", "Recommended intervention", topAction?topAction.nm:"n/a", topAction?topAction.why:"No intervention recommended at current levels.")}
       </div>
 
       <div class="strat-actions">
         <button class="btn primary" id="btnHowItWorks">See How It Works</button>
         <button class="btn primary" id="btnOpenStrategist" style="background:var(--violet);color:#0E1230">Build AI Strategy</button>
       </div>
+      </div>
     </div>`;
 }
 
-/* ---- Overview -> Drivers: why the Regional Stress Score is what it is ---- */
+/* ---- Overview -> Drivers/* ---- Overview -> Drivers: why the Regional Stress Score is what it is ---- */
+function domainScaleBarHTML(){
+  // Mirrors rcolor()'s exact thresholds (aqua<32, violet 32-49, amber 50-69, red>=70) so this
+  // legend always matches how the domain meter bars below are actually colored.
+  return `
+    <div style="height:9px;border-radius:6px;overflow:hidden;display:flex;margin:10px 0 6px">
+      <div style="width:32%;background:var(--aqua)"></div>
+      <div style="width:18%;background:var(--violet)"></div>
+      <div style="width:20%;background:var(--amber)"></div>
+      <div style="width:30%;background:var(--red)"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);font-family:'JetBrains Mono'">
+      <span>0</span><span>50</span><span>100</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font-size:10.5px;font-weight:600;margin-top:8px">
+      <span style="color:var(--aqua)">Low</span>
+      <span style="color:var(--violet)">Moderate</span>
+      <span style="color:var(--amber)">High</span>
+      <span style="color:var(--red)">Extreme</span>
+    </div>`;
+}
+
+function calcPipelineHTML(){
+  const icNorm = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="4" y="10" width="16" height="4" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M8 10V6M12 10V4M16 10V7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`;
+  const icWeight = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 3v18M5 7h14M5 7l-3 6h6l-3-6zM19 7l-3 6h6l-3-6z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const icAgg = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.6"/><circle cx="5" cy="6" r="2" stroke="currentColor" stroke-width="1.4"/><circle cx="19" cy="6" r="2" stroke="currentColor" stroke-width="1.4"/><circle cx="5" cy="18" r="2" stroke="currentColor" stroke-width="1.4"/><circle cx="19" cy="18" r="2" stroke="currentColor" stroke-width="1.4"/><path d="M7 7l3 3M17 7l-3 3M7 17l3-3M17 17l-3-3" stroke="currentColor" stroke-width="1.2"/></svg>`;
+  const icEsc = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 2C9 7 6 10 6 14a6 6 0 0012 0c0-2-1-3.5-2-5 .3 2-.7 3-2 3-1.6 0-2-1.5-1-3.5C13.5 6 13 4 12 2z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
+  const steps = [
+    [icNorm, "--aqua", "Normalize", "Each domain scored 0\u2013100"],
+    [icWeight, "--violet", "Weight", "Apply domain importance"],
+    [icAgg, "--amber", "Aggregate", "Weighted sum of domains"],
+    [icEsc, "--red", "Escalate", "High-risk escalation rule"],
+  ];
+  const ICON_BG = {"--aqua":"rgba(72,208,174,.16)", "--violet":"rgba(156,167,232,.16)", "--amber":"rgba(232,178,74,.16)", "--red":"rgba(240,121,92,.16)"};
+  return `<div style="display:flex;flex-wrap:wrap;align-items:stretch;gap:8px">
+    ${steps.map(([ic,col,label,cap],i)=>`
+      ${i>0?`<div style="display:flex;align-items:center;color:var(--muted2);font-size:14px">\u203A</div>`:""}
+      <div style="flex:1 1 110px;min-width:100px;text-align:center;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 8px">
+        <div class="insight-ic" style="margin:0 auto 8px;background:${ICON_BG[col]};color:${cv(col)}">${ic}</div>
+        <div style="font-size:11.5px;font-weight:600">${label}</div>
+        <div style="font-size:9.5px;color:var(--muted);margin-top:2px;line-height:1.4">${cap}</div>
+      </div>`).join("")}
+  </div>`;
+}
+
+function domainDonutSVG(R){
+  const contribs = R.domains.map(d=>({...d, contrib: d.v*(R.weights[d.k]||0)})).sort((a,b)=>b.contrib-a.contrib);
+  const total = contribs.reduce((s,d)=>s+d.contrib,0) || 1;
+  const RAD=48, C=2*Math.PI*RAD;
+  let cum=0;
+  const segs = contribs.map(d=>{
+    const frac = d.contrib/total;
+    const dash = frac*C;
+    const seg = `<circle cx="60" cy="60" r="${RAD}" fill="none" stroke="${cv(d.c)}" stroke-width="15"
+      stroke-dasharray="${dash.toFixed(2)} ${(C-dash).toFixed(2)}" stroke-dashoffset="${(-cum).toFixed(2)}"
+      transform="rotate(-90 60 60)"/>`;
+    cum += dash;
+    return seg;
+  }).join("");
+  const maxContrib = contribs[0] ? contribs[0].contrib : 1;
+  const legend = contribs.map(d=>`
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">
+      <span style="width:8px;height:8px;border-radius:50%;background:${cv(d.c)};flex:0 0 auto"></span>
+      <span style="flex:0 0 auto;width:118px;font-size:11px;color:#B7D3BF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.nm}</span>
+      <div style="flex:1;height:5px;background:#06160E;border-radius:4px;overflow:hidden;min-width:24px">
+        <div style="width:${(d.contrib/maxContrib*100).toFixed(0)}%;height:100%;background:${cv(d.c)}"></div>
+      </div>
+      <span style="flex:0 0 32px;text-align:right;font-family:'JetBrains Mono';font-size:10.5px;color:${cv(d.c)}">${d.contrib.toFixed(1)}</span>
+    </div>`).join("");
+  return `<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+    <div style="flex:0 0 auto;position:relative;width:120px;height:120px">
+      <svg width="120" height="120" viewBox="0 0 120 120">
+        <circle cx="60" cy="60" r="${RAD}" stroke="${cv('--line')}" stroke-width="15" fill="none"/>
+        ${segs}
+      </svg>
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+        <div style="font-family:'Space Grotesk';font-size:24px;font-weight:700">${R.cascade}</div>
+        <div style="font-size:8px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;text-align:center;line-height:1.3">Regional<br>Stress Score</div>
+      </div>
+    </div>
+    <div style="flex:1;min-width:180px">${legend}</div>
+  </div>`;
+}
+
 function overviewDrivers(R){
   const sorted = [...R.domains].sort((a,b)=>b.v-a.v);
   const top3 = sorted.slice(0,3).map(d=>DOMAIN_DRIVER_PHRASE[d.k]||d.nm.toLowerCase());
@@ -1836,49 +2029,181 @@ function overviewDrivers(R){
   const meters = sorted.map(meterHTML).join("");
   const unc = uncertainty(ST.region, ST.live);
   return `
-    <div class="panel">
-      <div class="phead"><span class="dot" style="background:var(--aqua)"></span>
-        <h2>What is driving the Regional Stress Score?</h2></div>
-      <p style="font-size:12.5px;color:#B7D3BF;line-height:1.6;margin:0 0 14px">${sentence}</p>
-      <div class="grid cols2">${meters}</div>
+    <div class="grid cols2">
+      <div class="panel">
+        <div class="phead"><span class="dot" style="background:var(--aqua)"></span>
+          <h2>What is driving the Regional Stress Score?</h2></div>
+        <p style="font-size:12.5px;color:#B7D3BF;line-height:1.6;margin:0 0 14px">${sentence}</p>
+        <div class="grid" style="gap:10px">${meters}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="panel">
+          <div class="phead"><span class="dot" style="background:var(--violet)"></span>
+            <h2>Domain Risk Score Scale</h2></div>
+          ${domainScaleBarHTML()}
+        </div>
+        <div class="panel">
+          <div class="phead"><span class="dot" style="background:var(--aqua)"></span>
+            <h2>How the Regional Stress Score is Calculated</h2></div>
+          ${calcPipelineHTML()}
+        </div>
+        <div class="panel">
+          <div class="phead"><span class="dot" style="background:var(--amber)"></span>
+            <h2>Domain Contribution to Overall Score</h2></div>
+          ${domainDonutSVG(R)}
+          <button class="calc-toggle" id="calcToggle" style="margin-top:12px">View exact calculation <span id="calcCaret">\u25BE</span></button>
+          <div class="calc-inline" id="calcInline">${howCalculated(R)}</div>
+        </div>
+      </div>
     </div>
-    <div class="panel" style="margin-top:14px">
-      ${sensitivityCard(unc)}
-      <button class="calc-toggle" id="calcToggle" style="margin-top:12px">How this score was calculated <span id="calcCaret">▾</span></button>
-      <div class="calc-inline" id="calcInline">${howCalculated(R)}</div>
+    <div class="grid cols2" style="margin-top:14px">
+      <div class="panel">${sensitivityCard(unc)}</div>
+      <div class="panel">
+        <p style="font-size:11.5px;color:var(--muted);line-height:1.6;margin:0 0 12px">
+          Sensitivity shows how much the modeled score changes when uncertain assumptions are varied within
+          their tested ranges. It is not a probability forecast or a statistical confidence interval.</p>
+        <div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">About sensitivity level</div>
+        <div class="sens-grid">
+          <div class="sens-row"><span class="sk" style="color:var(--green)">Low</span><span class="sv">small change</span></div>
+          <div class="sens-row"><span class="sk" style="color:var(--amber)">Moderate</span><span class="sv">noticeable change</span></div>
+          <div class="sens-row"><span class="sk" style="color:var(--red)">High</span><span class="sv">large change</span></div>
+        </div>
+      </div>
     </div>`;
 }
 
-/* ---- Overview -> Region & Data: map, provenance summary, link to full sources ---- */
+/* ---- Overview -> Region & Data/* ---- Overview -> Region & Data: map, provenance summary, link to full sources ---- */
 function overviewRegionData(R){
   const bnd = band(R.cascade);
   const live = ST.live;
+  const st = live ? live.status : {};
+  const liveKeys = ["sst","sstTrend","atmo","aqi"];
+  const liveOkCount = live ? liveKeys.filter(k=>st[k]==="ok"||st[k]==="ai").length : 0;
+  const liveTotalCount = liveKeys.length;
+  const coverage = !live ? {label:"Not yet loaded", col:"var(--muted)"}
+    : liveOkCount===liveTotalCount ? {label:"Good", col:"var(--aqua)"}
+    : liveOkCount>0 ? {label:"Partial", col:"var(--amber)"}
+    : {label:"Low", col:"var(--red)"};
   const liveStatus = live
-    ? (Object.values(live.status).every(s=>s==="ok") ? "Live data" : "Live, partial modeled fallback")
+    ? (Object.values(st).every(s=>s==="ok") ? "Live data" : "Live, partial modeled fallback")
     : "Modeled baseline (live feeds unavailable)";
   const lastRefresh = ST.lastRefreshAt
     ? new Date(ST.lastRefreshAt).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})
     : "Not yet refreshed";
+  const regionSub = REGION_SUBLABEL[ST.region.id] || "";
+  const b = ST.region.b;
+
+  const stat=k=> ST.loading?`<span class="fstat load">\u2026</span>`
+    : k==="ok"?`<span class="fstat ok">Live</span>`
+    : k==="ai"?`<span class="fstat ai">Statistical</span>`
+    : k==="mdl"?`<span class="fstat mdl">Modeled</span>`
+    : `<span class="fstat err">n/a</span>`;
+  const liveRow=(a,val,unit,source,status)=>`
+    <tr><td>${a}</td><td class="num">${val}${unit?` ${unit}`:""}</td><td>${source}</td><td>${stat(status)}</td></tr>`;
+  const typeClass = t=> t==="Modeled"?"ok":t==="Proxy"?"mdl":"load";
+  const modeledRow=(a,val,sourceType,type)=>`
+    <tr><td>${a}</td><td class="num">${val} / 100</td><td>${sourceType}</td><td><span class="fstat ${typeClass(type)}">${type}</span></td></tr>`;
+
   return `
     <div class="panel">
       <div class="phead"><span class="dot" style="background:var(--aqua)"></span>
         <h2>Region & data</h2></div>
-      ${hotspotMap(ST.region, bnd)}
-      <div class="lvm" style="margin-top:10px">
-        <div class="lvm-row"><span class="lvm-k" style="color:var(--aqua)">Live-data status</span><span class="lvm-v">${liveStatus}</span></div>
-        <div class="lvm-row"><span class="lvm-k" style="color:var(--aqua)">Last refresh</span><span class="lvm-v">${lastRefresh}</span></div>
+      <p style="font-size:12.5px;color:#B7D3BF;line-height:1.6;margin:0 0 14px">
+        EarthShield separates live environmental signals from modeled regional baseline indicators
+        so you can see what is directly observed versus inferred or modeled.</p>
+      <div class="grid cols3">
+        <div class="insight-card">
+          <div class="ik">Regional lens</div>
+          <div class="iv">${ST.region.name}</div>
+          ${regionSub?`<div class="score-sub">${regionSub}</div>`:""}
+        </div>
+        <div class="insight-card">
+          <div class="ik">Live data coverage</div>
+          <div class="iv">${live?`${liveOkCount} live inputs`:"Not yet loaded"} <span style="font-size:9.5px;font-weight:700;color:${coverage.col};border:1px solid ${coverage.col}55;border-radius:20px;padding:2px 8px;margin-left:2px">${coverage.label}</span></div>
+          <div class="score-sub">${live?`${liveOkCount} of ${liveTotalCount} live signals available`:"Refresh to load live data"}</div>
+        </div>
+        <div class="insight-card">
+          <div class="ik">Model transparency</div>
+          <div class="iv">Live + modeled</div>
+          <div class="score-sub">Observed conditions + modeled baselines</div>
+        </div>
       </div>
     </div>
-    <div class="panel" style="margin-top:14px">
-      <div class="phead"><span class="dot" style="background:var(--amber)"></span>
-        <h2>Data used for this region</h2></div>
-      <div class="lvm">
-        <div class="lvm-row"><span class="lvm-k" style="color:var(--aqua)">Live environmental signals</span>
-          <span class="lvm-v">Ocean temperature, atmospheric conditions, air quality</span></div>
-        <div class="lvm-row"><span class="lvm-k" style="color:var(--amber)">Modeled regional conditions</span>
-          <span class="lvm-v">Energy demand, data-center activity, industry, land use, population and coastal exposure</span></div>
+
+    <div class="grid cols2" style="margin-top:14px">
+      <div class="panel">
+        <div class="phead"><span class="dot" style="background:var(--aqua)"></span>
+          <h2>Live environmental signals</h2><span class="tag real">Live</span></div>
+        <div style="overflow-x:auto">
+        <table class="score-tbl">
+          <thead><tr><th>Signal</th><th class="num">Current value</th><th>Source</th><th>Status</th></tr></thead>
+          <tbody>
+            ${liveRow("Sea surface temperature",live?live.sst:"n/a","\u00B0C","Open-Meteo Marine",st.sst)}
+            ${liveRow("Sea temperature vs baseline",live?(live.sstAnom>=0?"+":"")+live.sstAnom:"n/a","\u00B0C","Open-Meteo Marine (derived)",st.sst)}
+            ${liveRow("Atmospheric instability",live?live.cape:"n/a","J/kg","Open-Meteo Forecast",st.atmo)}
+            ${liveRow("Air quality",live?live.aqi:"n/a","","Open-Meteo Air Quality",st.aqi)}
+          </tbody>
+        </table>
+        </div>
       </div>
-      <button class="link-btn" id="btnViewDataSources" style="margin-top:12px">View detailed data & sources →</button>
+      <div class="panel">
+        <div class="phead"><span class="dot" style="background:var(--amber)"></span>
+          <h2>Modeled regional baseline indicators</h2><span class="tag model">Modeled</span></div>
+        <div style="overflow-x:auto">
+        <table class="score-tbl">
+          <thead><tr><th>Indicator</th><th class="num">Current value</th><th>Source type</th><th>Type</th></tr></thead>
+          <tbody>
+            ${modeledRow("Coastal exposure",Math.round(b.coastExp*100),"Baseline model","Modeled")}
+            ${modeledRow("Population pressure near coast",Math.round(b.coastPop*100),"Modeled proxy","Proxy")}
+            ${modeledRow("Energy & data-center demand",Math.round(((b.energy+b.dataCtr)/2)*100),"Baseline model","Modeled")}
+            ${modeledRow("Industrial activity",Math.round(b.industry*100),"Baseline model","Baseline")}
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:14px">
+      <div class="phead"><span class="dot" style="background:var(--violet)"></span>
+        <h2>How EarthShield uses this data</h2></div>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+        <div class="chip"><i style="background:var(--aqua)"></i>Live signals + regional baselines</div>
+        <span style="color:var(--muted2)">\u2192</span>
+        <div class="chip"><i style="background:var(--violet)"></i>Regional Stress Model</div>
+        <span style="color:var(--muted2)">\u2192</span>
+        <div class="chip"><i style="background:var(--amber)"></i>Planetary Cascade Model</div>
+      </div>
+      <p style="font-size:11.5px;color:var(--muted);line-height:1.55;margin:12px 0 0">
+        Live signals inform near-term conditions. Modeled baseline indicators represent slower-changing
+        structural exposure and vulnerability that shape how the region responds to stress.</p>
+      <button class="link-btn" id="btnViewDataSources" style="margin-top:12px">View detailed data & sources \u2192</button>
+    </div>
+
+    <div class="grid cols3" style="margin-top:14px">
+      <div class="insight-card">
+        <div class="ik">Data provenance</div>
+        <div class="score-sub" style="margin-top:6px;max-width:none"><b style="color:var(--aqua)">Live observed inputs</b><br>Direct measurements and official operational feeds.</div>
+        <div class="score-sub" style="margin-top:8px;max-width:none"><b style="color:var(--amber)">Statistically modeled indicators</b><br>Derived from models and proxies with known limitations.</div>
+        <div class="score-sub" style="margin-top:8px;max-width:none"><b style="color:var(--violet)">Hand-calibrated baselines</b><br>Expert-curated baselines and structural parameters.</div>
+      </div>
+      <div class="insight-card">
+        <div class="ik">Current data status</div>
+        <div class="score-sub" style="margin-top:6px">Live inputs available: <b style="color:var(--txt)">${liveOkCount} / ${liveTotalCount}</b></div>
+        <div class="score-sub" style="margin-top:4px">Data mode: <b style="color:var(--txt)">${liveStatus}</b></div>
+        <div class="score-sub" style="margin-top:4px">Last refresh: <b style="color:var(--txt)">${lastRefresh}</b></div>
+      </div>
+      <div class="insight-card">
+        <div class="ik">Why this matters</div>
+        <div class="score-sub" style="margin-top:6px;max-width:none">\u2713 Live and modeled signals serve different purposes.</div>
+        <div class="score-sub" style="margin-top:4px;max-width:none">\u2713 Combining both gives a fuller picture of current conditions.</div>
+        <div class="score-sub" style="margin-top:4px;max-width:none">\u2713 Transparency helps you interpret the score responsibly.</div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:14px">
+      <div class="phead"><span class="dot" style="background:var(--aqua)"></span>
+        <h2>Selected region on the map</h2></div>
+      ${hotspotMap(ST.region, bnd)}
     </div>`;
 }
 
@@ -1909,38 +2234,40 @@ function howCalculated(R){
   </div>`;
 }
 function sensitivityCard(u){
+  // Maps the underlying uncertainty() confidence classification onto the plain-language
+  // Low/Moderate/High "sensitivity level" wording requested for Overview. Display-only relabel:
+  // the same thresholds and u.confidence value are still used unchanged in Info -> Model Checks
+  // (infoValidation()), so no scoring or classification logic changes here.
   const conf = u.confidence;
-  const cls = conf==="High confidence" ? "agree"
-            : conf==="Moderate confidence" ? "moderate" : "";
-  const icon = conf==="High confidence" ? "\u2713"
-             : conf==="Moderate confidence" ? "\u25D1" : "\u26A0\uFE0E";
-  const iconCol = conf==="High confidence" ? "var(--green)"
-                : conf==="Moderate confidence" ? "var(--amber)" : "var(--red)";
-  const confTip = conf==="Assumption-sensitive" ? helpIcon("assumptionSensitive") : "";
+  const level = conf==="High confidence" ? "Low" : conf==="Moderate confidence" ? "Moderate" : "High";
+  const cls = level==="Low" ? "agree" : level==="Moderate" ? "moderate" : "";
+  const icon = level==="Low" ? "\u2713" : level==="Moderate" ? "\u25D1" : "\u26A0\uFE0E";
+  const iconCol = level==="Low" ? "var(--green)" : level==="Moderate" ? "var(--amber)" : "var(--red)";
   return `<div class="uncert ${cls}">
     <div class="ui" style="color:${iconCol}">${icon}</div>
     <div class="ub" style="flex:1">
-      <h5>Model sensitivity ${helpIcon("sensitivity")}</h5>
+      <h5>Model Sensitivity ${helpIcon("sensitivity")}</h5>
       <div class="sens-grid">
-        <div class="sens-row"><span class="sk">Estimated score</span><span class="sv mono">${u.baseline}</span></div>
-        <div class="sens-row"><span class="sk">Sensitivity range</span><span class="sv mono">${u.minimum}\u2013${u.maximum}</span></div>
-        <div class="sens-row"><span class="sk">Model confidence</span><span class="sv" style="color:${iconCol}">${conf}${confTip}</span></div>
-        <div class="sens-row"><span class="sk">Most sensitive assumption</span><span class="sv">${u.largestUncertaintyDriver}${u.largestUncertaintyGlossaryKey?helpIcon(u.largestUncertaintyGlossaryKey):""}</span></div>
+        <div class="sens-row"><span class="sk">Current modeled score</span><span class="sv mono">${u.baseline}</span></div>
+        <div class="sens-row"><span class="sk">Tested score range</span><span class="sv mono">${u.minimum}\u2013${u.maximum}</span></div>
+        <div class="sens-row"><span class="sk">Sensitivity level ${helpIcon("sensitivityLevel")}</span><span class="sv" style="color:${iconCol}">${level}</span></div>
+        <div class="sens-row"><span class="sk">Most influential assumption</span><span class="sv">${u.largestUncertaintyDriver}${u.largestUncertaintyGlossaryKey?helpIcon(u.largestUncertaintyGlossaryKey):""}</span></div>
       </div>
       <p style="font-size:11px;color:var(--muted);margin:9px 0 0;line-height:1.5">
-        Changing the ${u.largestUncertaintyDriver.toLowerCase()} assumption within the tested range moved the
-        score by ${u.largestImpact} point${u.largestImpact===1?'':'s'}.</p>
+        Varying the ${u.largestUncertaintyDriver.toLowerCase()} assumption across the tested range changed the
+        Regional Stress Score by up to ${u.largestImpact} point${u.largestImpact===1?'':'s'} from the current score.</p>
     </div>
   </div>`;
 }
 
 /* ---- "why this score is high" explainer, built from real drivers ---- */
 /* ---- regional hotspot mini-map (equirectangular world w/ region markers) ---- */
-function hotspotMap(reg, bnd){
-  const W=720,H=360;
-  const proj=(lat,lon)=>({ x:(lon+180)/360*W, y:(90-lat)/180*H });
-  // Recognizable low-poly continents (equirectangular). Natural-Earth green land on ocean.
-  const land = `
+/* Shared low-poly continent outlines (equirectangular, 720x360 viewBox), Natural-Earth-style
+   simplified geography. Used by both the interactive hotspotMap() below and the decorative
+   earthWatermarkSVG() on Snapshot, so the watermark shows the same real coastlines as the
+   functional map rather than an invented shape. */
+function worldLandPaths(){
+  return `
     <!-- North America -->
     <path d="M70 70 L150 58 L180 72 L172 96 L196 104 L188 140 L150 150 L120 132 L96 138 L78 112 L88 92 Z"/>
     <path d="M150 150 L172 150 L168 168 L150 168 Z"/>
@@ -1957,15 +2284,36 @@ function hotspotMap(reg, bnd){
     <path d="M600 176 L648 172 L660 196 L632 210 L606 196 Z"/>
     <!-- Australia -->
     <path d="M600 232 L660 224 L686 252 L668 288 L616 284 L596 256 Z"/>`;
+}
+
+function hotspotMap(reg, bnd){
+  const W=720,H=360;
+  const proj=(lat,lon)=>({ x:(lon+180)/360*W, y:(90-lat)/180*H });
+  const land = worldLandPaths();
   let markers="";
+  let onP = null;
   REGIONS.forEach(r=>{
     const p=proj(r.lat,r.lon), on=r.id===reg.id;
+    if(on) onP = p;
     const col=on?cv(bnd.c):"#E8C98A";
     markers+=`<g>
       ${on?`<circle cx="${p.x}" cy="${p.y}" r="13" fill="${col}" opacity=".22"><animate attributeName="r" values="10;20;10" dur="2.4s" repeatCount="indefinite"/><animate attributeName="opacity" values=".32;0;.32" dur="2.4s" repeatCount="indefinite"/></circle>`:""}
       <circle cx="${p.x}" cy="${p.y}" r="${on?6:3.5}" fill="${col}" stroke="#08231F" stroke-width="${on?2:1.2}" opacity="${on?1:.7}"/>
     </g>`;
   });
+  // Invisible hover/focus target sitting exactly over the selected (blinking) marker, positioned
+  // by percentage so it stays aligned regardless of the SVG's rendered size. Reuses the existing
+  // .tip / .tip-box CSS (same mechanism as the app's help icons) so hover on desktop and tap/focus
+  // on touch devices both reveal the region name; the always-visible "Region" row below the map
+  // is the static fallback for devices where neither hover nor focus-on-tap is available.
+  const regionSub = (typeof REGION_SUBLABEL!=="undefined" && REGION_SUBLABEL[reg.id]) || "";
+  const hoverLabel = onP ? `
+      <div class="tip" tabindex="0" aria-label="${reg.name}" style="position:absolute;left:${(onP.x/W*100).toFixed(2)}%;top:${(onP.y/H*100).toFixed(2)}%;
+        transform:translate(-50%,-50%);width:26px;height:26px;margin:0;color:transparent;cursor:pointer">
+        <span class="tip-box" style="left:50%;top:auto;bottom:150%;transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px)">
+          <b style="color:var(--txt)">${reg.name}</b>${regionSub?`<br><span style="color:var(--muted)">${regionSub}</span>`:""}
+        </span>
+      </div>` : "";
   return `<div class="hotspot">
     <div class="hot-map">
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" width="100%" height="100%"
@@ -1974,6 +2322,7 @@ function hotspotMap(reg, bnd){
         <g opacity=".92">${land}</g>
         <g stroke="none">${markers}</g>
       </svg>
+      ${hoverLabel}
     </div>
     <div class="hot-meta">
       <div><span class="hk">Region</span><span class="hv">${reg.name}</span></div>
@@ -2760,9 +3109,12 @@ const GLOSSARY = {
   crossRegionSpillover: { plain:"Cross-region spillover", technical:null,
     def:"The possibility that displacement pressure from the selected region reaches another region, based on a small documented dataset of real connections (shared storm basins, migration corridors, shared infrastructure).",
     why:"EarthShield only names a destination region when a documented connection exists; otherwise it reports spillover as possible without inventing a destination." },
-  sensitivity: { plain:"Sensitivity range", technical:null,
-    def:"The range produced when important model assumptions are changed within predefined limits. It is not a probability range.",
+  sensitivity: { plain:"Model sensitivity", technical:null,
+    def:"Sensitivity shows how much the modeled score changes when uncertain assumptions are varied within their tested ranges. It is not a probability forecast or a statistical confidence interval.",
     why:"It shows how much the Regional Stress Score could move if a key assumption were different, a transparency check rather than a forecast interval." },
+  sensitivityLevel: { plain:"Sensitivity level", technical:null,
+    def:"A plain-language summary of how much the score moved under the sensitivity test. Low means a small change, Moderate means a noticeable change, High means a large change.",
+    why:"High-sensitivity results should be interpreted with more caution than low-sensitivity ones, since the score depends more heavily on an uncertain assumption." },
   confidence: { plain:"Model confidence", technical:null,
     def:"A plain-language label (High / Moderate / Assumption-sensitive) summarizing how much the score moved under the sensitivity test.",
     why:"Assumption-sensitive results should be interpreted with more caution than high-confidence ones." },
