@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="description" content="EarthShield is a planetary cascade intelligence platform that models ocean warming and resource-consumption risks.">
-<title>EarthShield · Planetary Cascade Intelligence</title>
+<meta name="description" content="Spillover is a planetary cascade intelligence platform that models ocean warming and resource-consumption risks.">
+<title>Spillover · Planetary Cascade Intelligence</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -485,6 +485,16 @@ main{scrollbar-color:#2A6B45 #0E2B1D;scrollbar-width:thin}
 .hscore-meta .s{font-size:10px;color:var(--muted2);margin-top:2px;line-height:1.3}
 .hscore.busy{justify-content:center;gap:8px;color:var(--muted);font-size:11.5px}
 
+/* ---------- dashboard: spacing around the score strip, paired CTAs ---------- */
+.panel + .hscores{margin-top:14px}
+.hscores + .panel{margin-top:14px}
+/* .btn is flex:1 and .btn.ghost is a fixed 54px icon button; the Dashboard's two
+   calls to action need to share the row evenly instead. */
+.cta-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.cta-row .btn{flex:1 1 160px;width:auto}
+.btn.secondary{background:var(--panel2);border-color:var(--line);color:var(--txt)}
+.btn.secondary:hover{border-color:var(--aqua);color:var(--aqua)}
+
 /* ---------- header icon pair + info modal ---------- */
 .hicons{display:flex;gap:8px;flex:0 0 auto}
 #modal{position:fixed;inset:0;z-index:300;background:rgba(5,18,11,.86);backdrop-filter:blur(4px);
@@ -532,7 +542,7 @@ main{scrollbar-color:#2A6B45 #0E2B1D;scrollbar-width:thin}
           <circle cx="17" cy="17" r="3.2" fill="var(--aqua)"/>
         </svg>
         <div>
-          <h1>EarthShield</h1>
+          <h1>Spillover</h1>
           <div class="sub">Planetary Cascade Intelligence</div>
         </div>
       </div>
@@ -546,7 +556,7 @@ main{scrollbar-color:#2A6B45 #0E2B1D;scrollbar-width:thin}
         <svg class="rp-caret" width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <div class="hicons">
-        <button class="gbtn" id="btnHow" title="How EarthShield works" aria-label="How EarthShield works">
+        <button class="gbtn" id="btnHow" title="How Spillover works" aria-label="How Spillover works">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 11v5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><circle cx="12" cy="7.8" r="1.1" fill="currentColor"/></svg>
         </button>
         <button class="gbtn" id="btnSources" title="Data sources" aria-label="Data sources">
@@ -554,7 +564,6 @@ main{scrollbar-color:#2A6B45 #0E2B1D;scrollbar-width:thin}
         </button>
       </div>
     </div>
-    <div class="hscores" id="hScores"></div>
   </header>
 
   <nav id="tabs">
@@ -582,9 +591,9 @@ main{scrollbar-color:#2A6B45 #0E2B1D;scrollbar-width:thin}
 </div>
 <script>
 /* ===================================================================
-   EarthShield, Planetary Cascade Intelligence (single-file POC)
+   Spillover, Planetary Cascade Intelligence (single-file POC)
 
-   EarthShield combines:
+   Spillover combines:
      1. Statistical SST baseline estimation using OLS regression
      2. Deterministic regional scoring, planetary cascade propagation,
         simulation, sensitivity analysis and intervention optimization
@@ -727,9 +736,12 @@ async function loadLive(reg){
   out.sstBaseline=trend.baseline; out.sstStd=trend.std; out.sstSlope=trend.slope;
   out.sstTrendDays=trend.days; out.status.sstTrend=trend.status;
   try{
-    const m = await jget(`https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lon}&hourly=sea_surface_temperature&forecast_days=1`);
-    const arr=(m.hourly&&m.hourly.sea_surface_temperature||[]).filter(v=>v!=null);
-    if(arr.length){ out.sst=+(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(1); out.status.sst="ok"; }
+    // `current` (15-minutely model data per Open-Meteo docs) rather than a same-day hourly
+    // mean, so this is a genuine current value. Still API-derived model output, not an
+    // instrument observation.
+    const m = await jget(`https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lon}&current=sea_surface_temperature&forecast_days=1`);
+    const cur = m.current && m.current.sea_surface_temperature;
+    if(cur!=null){ out.sst=+cur.toFixed(1); out.status.sst="ok"; }
     else throw new Error("empty");
   }catch(e){ out.sst=trend.baseline; out.status.sst="mdl"; }
   out.sstAnom = +(out.sst - out.sstBaseline).toFixed(1);
@@ -737,7 +749,7 @@ async function loadLive(reg){
 
   // 2) Atmosphere: severe-convective ingredients (CAPE, shear, humidity)
   try{
-    const w = await jget(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=relative_humidity_2m,wind_speed_10m&hourly=cape,wind_speed_700hPa,wind_speed_10m&forecast_days=1`);
+    const w = await jget(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=relative_humidity_2m,wind_speed_10m&hourly=cape,wind_speed_700hPa,wind_speed_10m&wind_speed_unit=ms&forecast_days=1`);
     const cape=(w.hourly&&w.hourly.cape||[]).filter(v=>v!=null);
     out.cape = cape.length ? Math.round(Math.max(...cape)) : 800;
     const up=(w.hourly&&w.hourly.wind_speed_700hPa||[]); const lo=(w.hourly&&w.hourly.wind_speed_10m||[]);
@@ -794,8 +806,14 @@ function computeRisks(reg, live, sim){
   // ---- ENGINE A: Ocean-warming impacts ----
   // Ocean heat risk driven by SST anomaly only (NASA: ~90% excess heat to ocean).
   const oceanHeat = clamp(34 + sstAnom*26 + (b.sstClim>28?10:0));
-  // Storm intensification: warm SST is the fuel; convective ingredients modulate.
-  const ingredients = clamp((cape/3000)*45 + (hum/100)*25 + Math.min(shear,30)/30*20 + 10);
+  // Storm intensification: warm SST is the fuel; instability, humidity and LOW-SHEAR
+  // FAVORABILITY modulate it. Low vertical wind shear lets storms organize and intensify;
+  // high shear disrupts organization and suppresses it, so shear is transformed into a
+  // favorability term (higher shear -> lower favorability) rather than added directly.
+  // Simplified two-level wind-speed-magnitude proxy, not full vector shear, and not
+  // operational cyclone forecasting.
+  const lowShearFavorability = clamp01(1 - Math.min(Math.max(shear,0),30)/30);
+  const ingredients = clamp((cape/3000)*45 + (hum/100)*25 + lowShearFavorability*20 + 10);
   const stormInt = clamp(0.55*oceanHeat + 0.45*ingredients);
   const biodiv = clamp(28 + sstAnom*22 + industry*18 + aqi*0.12
                           - s.coastalBuffer*0.18);                          // reefs/fisheries; mangroves protect
@@ -830,7 +848,7 @@ function computeRisks(reg, live, sim){
 
   return {domains, cascade:Math.round(cascade), weights:w,
     baseWeighted:base, highCount:hi, escalation:1 + hi*0.035,
-    inputs:{sstAnom,energy,dataCtr,forestLoss,forestCover,coastPop,cape,shear,aqi,industry},
+    inputs:{sstAnom,energy,dataCtr,forestLoss,forestCover,coastPop,cape,shear,lowShearFavorability,aqi,industry},
     drivers:topDrivers(reg,live,domains)};
 }
 
@@ -894,12 +912,12 @@ const GRAPH_EDGES = [
     sourceReference:"U.S. Coast Guard Port Condition system (Whiskey/X-Ray/Yankee/Zulu), which closes ports ahead of severe storms" },
   { id:"e4",  source:"food",  target:"public_health",   strength:.55, category:"human",
     confidence:"moderate", evidenceType:"modeled-proxy",
-    explanation:"Food and water insecurity is a widely documented public-health stressor after acute shocks, but this edge represents EarthShield's modeled strength for the link, not a single measured coefficient from one study.",
+    explanation:"Food and water insecurity is a widely documented public-health stressor after acute shocks, but this edge represents Spillover's modeled strength for the link, not a single measured coefficient from one study.",
     sourceReference:"General basis: WHO and FAO post-disaster food-security and health guidance (no single cited coefficient)" },
   { id:"e5",  source:"res",   target:"energy_industry", strength:.60, category:"resource",
     confidence:"moderate", evidenceType:"modeled-proxy",
     explanation:"The regional resource-stress index is used as a proxy for strain on industry and energy systems, not an independent industry-capacity measurement.",
-    sourceReference:"EarthShield regional pressure index" },
+    sourceReference:"Spillover regional pressure index" },
   { id:"e6",  source:"ai",    target:"grid",            strength:.50, category:"infrastructure",
     confidence:"moderate", evidenceType:"evidence-based",
     explanation:"Data center electricity demand is a growing, documented share of regional grid load.",
@@ -907,14 +925,14 @@ const GRAPH_EDGES = [
   { id:"e7",  source:"ai",    target:"digital_infra",   strength:.70, category:"infrastructure",
     confidence:"moderate", evidenceType:"modeled-proxy",
     explanation:"Rising compute demand is modeled as direct pressure on regional digital-infrastructure capacity.",
-    sourceReference:"EarthShield regional pressure index" },
+    sourceReference:"Spillover regional pressure index" },
   { id:"e8",  source:"grid",           target:"public_health", strength:.55, category:"human",
     confidence:"moderate", evidenceType:"modeled-proxy",
-    explanation:"Grid outages disrupting hospitals, water treatment and cold-chain medicine is a well-documented pattern, but this edge represents EarthShield's modeled strength for the link, not a single measured coefficient from one study.",
+    explanation:"Grid outages disrupting hospitals, water treatment and cold-chain medicine is a well-documented pattern, but this edge represents Spillover's modeled strength for the link, not a single measured coefficient from one study.",
     sourceReference:"General basis: CDC power-outage public-health guidance; WHO essential health-service continuity guidance (no single cited coefficient)" },
   { id:"e9",  source:"ports_logistics",target:"food_water",    strength:.50, category:"resource",
     confidence:"moderate", evidenceType:"modeled-proxy",
-    explanation:"Port and logistics disruption delaying food and water-treatment supply chains is a widely documented pattern, but this edge represents EarthShield's modeled strength for the link, not a single measured coefficient from one study.",
+    explanation:"Port and logistics disruption delaying food and water-treatment supply chains is a widely documented pattern, but this edge represents Spillover's modeled strength for the link, not a single measured coefficient from one study.",
     sourceReference:"General basis: FAO disaster-impact-on-food-supply-chain reporting (no single cited coefficient)" },
   { id:"e10", source:"ocean_eco",      target:"food_water",    strength:.45, category:"resource",
     confidence:"moderate", evidenceType:"evidence-based",
@@ -930,8 +948,8 @@ const GRAPH_EDGES = [
     sourceReference:"Scenario assumption, not a direct measurement" },
   { id:"e13", source:"disp",  target:"cross_region",    strength:.40, category:"human",
     confidence:"moderate", evidenceType:"modeled-proxy",
-    explanation:"Regional displacement pressure is modeled as spilling into other regions only where EarthShield has a documented cross-region connection (shared storm basin, migration corridor, or shared infrastructure corridor). Where no documented connection exists, spillover is reported as possible but the destination is not asserted.",
-    sourceReference:"EarthShield documented cross-region connection dataset (REGION_CONNECTIONS)" },
+    explanation:"Regional pressure is modeled as spilling into other regions only where Spillover has a documented cross-region connection (shared storm basin, migration corridor, or shared energy corridor). Each documented connection uses the source domain that actually drives it, for example a shared storm basin uses Storm Intensification and a shared energy corridor uses Resource Stress, not always Human Displacement. Where no documented connection exists, spillover is reported as possible using displacement pressure as a conservative signal, but the destination is not asserted. The 0.40 strength is a common transfer factor applied consistently across every documented connection type.",
+    sourceReference:"Spillover documented cross-region connection dataset (REGION_CONNECTIONS)" },
 ];
 function edgeById(id){ return GRAPH_EDGES.find(e=>e.id===id); }
 
@@ -945,26 +963,32 @@ function edgeById(id){ return GRAPH_EDGES.find(e=>e.id===id); }
    ========================================================= */
 const REGION_CONNECTIONS = [
   { source:"carib", target:"miami", connectionType:"Displacement / migration corridor", strength:.55,
+    sourceDomain:"disp",
     confidence:"Medium", evidenceType:"modeled-proxy",
     explanation:"Caribbean-to-South-Florida population movement is a documented pattern following major storm displacement events.",
     sourceReference:"U.S. Department of Homeland Security, Coastal Border Encounters data" },
   { source:"miami", target:"carib", connectionType:"Shared Atlantic storm basin", strength:.40,
+    sourceDomain:"storm",
     confidence:"Medium", evidenceType:"modeled-proxy",
     explanation:"Both regions sit within the same North Atlantic hurricane basin and share overlapping storm tracks.",
     sourceReference:"NOAA National Hurricane Center, Atlantic hurricane database (HURDAT2)" },
   { source:"gulf", target:"houston", connectionType:"Shared energy / petrochemical corridor", strength:.50,
+    sourceDomain:"res",
     confidence:"Medium", evidenceType:"modeled-proxy",
     explanation:"The New Orleans-to-Houston Gulf Coast corridor concentrates a large share of US refining and LNG capacity; disruption in one hub raises operational pressure on the other via shared supply chains.",
     sourceReference:"U.S. Energy Information Administration, petroleum and natural gas infrastructure maps" },
   { source:"houston", target:"gulf", connectionType:"Shared energy / petrochemical corridor", strength:.50,
+    sourceDomain:"res",
     confidence:"Medium", evidenceType:"modeled-proxy",
     explanation:"Same Gulf Coast refining and LNG corridor dependency, modeled symmetrically.",
     sourceReference:"U.S. Energy Information Administration, petroleum and natural gas infrastructure maps" },
   { source:"bangla", target:"chennai", connectionType:"Shared Bay of Bengal cyclone basin", strength:.45,
+    sourceDomain:"storm",
     confidence:"Medium", evidenceType:"modeled-proxy",
     explanation:"Bangladesh and southeast India share the Bay of Bengal cyclone basin, with recurring cross-basin storm systems affecting both coastlines.",
     sourceReference:"India Meteorological Department, Bay of Bengal cyclone track records" },
   { source:"chennai", target:"bangla", connectionType:"Shared Bay of Bengal cyclone basin", strength:.45,
+    sourceDomain:"storm",
     confidence:"Medium", evidenceType:"modeled-proxy",
     explanation:"Same Bay of Bengal cyclone basin dependency, modeled symmetrically.",
     sourceReference:"India Meteorological Department, Bay of Bengal cyclone track records" },
@@ -1077,25 +1101,32 @@ function propagatePlanetaryCascade(region, regionalResult, scenarioSim){
   const dispEdge = edgeById("e13");
   const affectedRegions = [];
   // spilloverStatus: "documented" = a named destination with a documented connection;
-  // "possible" = displacement pressure is elevated but EarthShield has no documented
+  // "possible" = displacement pressure is elevated but Spillover has no documented
   // connection dataset entry for this origin, so no destination is asserted;
   // "none" = displacement pressure is not elevated enough to model spillover at all.
+  // Each documented REGION_CONNECTION carries the regional domain that actually drives that
+  // channel (storm for a shared cyclone basin, res for a shared energy corridor, disp for a
+  // migration corridor), instead of always using Human Displacement. dispEdge.strength (0.40)
+  // is reused as a common cross-region transfer factor for every connection type, so this
+  // does not shift the overall GCP scale.
   let spilloverStatus = "none";
-  if(dispEdge && domainScores.disp!=null){
+  if(dispEdge){
     const conns = regionConnectionsFor(region.id);
     conns.forEach(cn=>{
       const target = REGIONS.find(r=>r.id===cn.target);
       if(!target) return;
-      const impact = clamp01(domainScores.disp * dispEdge.strength * CASCADE_ATTEN[1] * cn.strength);
+      const sourceScore = domainScores[cn.sourceDomain] ?? 0;
+      const impact = clamp01(sourceScore * dispEdge.strength * CASCADE_ATTEN[1] * cn.strength);
       if(impact>0.02){
         affectedRegions.push({ id:target.id, name:target.name, impact:+impact.toFixed(3),
           connectionType:cn.connectionType, confidence:cn.confidence, evidenceType:cn.evidenceType,
-          explanation:cn.explanation, sourceReference:cn.sourceReference });
+          explanation:cn.explanation, sourceReference:cn.sourceReference,
+          sourceDomain:cn.sourceDomain, sourceDomainLabel: DOMAIN_LABEL[cn.sourceDomain] || cn.sourceDomain });
       }
     });
     if(affectedRegions.length){
       spilloverStatus = "documented";
-    } else if(domainScores.disp>=0.45){
+    } else if(domainScores.disp!=null && domainScores.disp>=0.45){
       spilloverStatus = "possible";
     }
   }
@@ -1159,7 +1190,7 @@ function propagatePlanetaryCascade(region, regionalResult, scenarioSim){
   Object.values(contributions).flat().forEach(c=>{
     if(c.evidenceType!=="evidence-based") assumptions.push(c.sourceLabel+" -> "+c.explanation);
   });
-  if(affectedRegions.length) assumptions.push("Cross-region spillover is limited to EarthShield's documented connection dataset (REGION_CONNECTIONS); it is a modeled proxy, not a measured regional transmission channel.");
+  if(affectedRegions.length) assumptions.push("Cross-region spillover is limited to Spillover's documented connection dataset (REGION_CONNECTIONS); it is a modeled proxy, not a measured regional transmission channel.");
 
   return {
     gcp: clamp(gcp,0,100),
@@ -1385,14 +1416,20 @@ function pathwaysInterrupted(baseProp, afterProp){
   return interrupted;
 }
 
-function mitigations(reg, live){
-  const base = computeRisks(reg, live, null);
+function mitigations(reg, live, scenarioSim=null){
+  // Scenario-aware: when a Simulator scenario is active, each intervention is merged ON TOP
+  // OF that counterfactual (not in place of it) and the full model is rerun, so reductions
+  // are always relative to the scenario state. Same merge pattern as
+  // generateInterventionCandidates(), so the two can never disagree.
+  const base = computeRisks(reg, live, scenarioSim);
   const baseR = base.cascade;
-  const baseProp = propagatePlanetaryCascade(reg, base, null);
+  const baseProp = propagatePlanetaryCascade(reg, base, scenarioSim);
   const acts = mitigationActions();
   const scored = acts.map(a=>{
-    const after = computeRisks(reg, live, a.sim);
-    const afterProp = propagatePlanetaryCascade(reg, after, a.sim);
+    const merged = { ...(scenarioSim||{}) };
+    Object.entries(a.sim).forEach(([k,v])=>{ merged[k]=(merged[k]||0)+v; });
+    const after = computeRisks(reg, live, merged);
+    const afterProp = propagatePlanetaryCascade(reg, after, merged);
     const red = Math.max(0, Math.round(baseR - after.cascade));
     const gcpRed = Math.max(0, Math.round(baseProp.gcp - afterProp.gcp));
     return { ...a, baseR, afterR:after.cascade, red,
@@ -1590,7 +1627,7 @@ function generateInstantCascadeStrategy(candResult, prefs){
     ],
     confidence: chosen.gcpReduction>0 ? "moderate" : "low",
     limitations:[
-      "Generated by EarthShield's deterministic ranking rules, not a generative model.",
+      "Generated by Spillover's deterministic ranking rules, not a generative model.",
       "Sequencing follows the fixed order returned by the optimizer, not a context-aware judgment.",
       "Does not account for local political, budgetary or permitting constraints beyond the selected budget tier.",
     ],
@@ -1731,217 +1768,6 @@ function domainCap(k){
     ai:"Data center electricity demand pressure (IEA trajectory)."}[k]||"";
 }
 
-/* ---- the signature cascade chain diagram ---- */
-function cascadeGraphData(R){
-  // Shared node/link definitions for the regional cascade diagram (cascadeDiagram) and its
-  // plain-language summary (cascadeWhatThisMeans), so the two views can never drift apart.
-  // Column 1: drivers/inputs.  Column 2: system stress.  Column 3: outcomes.
-  const g=k=>R.domains.find(d=>d.k===k).v;
-  const drivers=[
-    {id:"sst",     nm:"Ocean Warming", v:Math.round(clamp(34+R.inputs.sstAnom*26)), c:"--aqua"},
-    {id:"aien",    nm:"AI + Energy",   v:g("ai"),  c:"--amber"},
-    {id:"forest",  nm:"Forest Loss",   v:Math.round(R.inputs.forestLoss*100), c:"--green"},
-    {id:"industry",nm:"Industry",      v:Math.round(R.inputs.industry*100), c:"--amber"},
-  ];
-  const mid=[
-    {id:"ocean", nm:"Ocean Heat",    v:g("ocean"), c:"--aqua"},
-    {id:"res",   nm:"Resource Stress",v:g("res"),  c:"--amber"},
-  ];
-  const out=[
-    {id:"storm", nm:"Storm Intensity",v:g("storm"), c:"--red"},
-    {id:"food",  nm:"Food & Water",   v:g("food"),  c:"--violet"},
-    {id:"biodiv",nm:"Biodiversity",   v:g("biodiv"),c:"--green"},
-    {id:"disp",  nm:"Displacement",   v:g("disp"),  c:"--red"},
-  ];
-  // LINKS: each corresponds to a term actually present in computeRisks().
-  //  sst->ocean (oceanHeat=f(sstAnom)); sst->storm & ocean->storm (stormInt=f(oceanHeat,ingredients));
-  //  sst->food & forest->food (foodWater=f(sstAnom,forestLoss)); sst->biodiv & industry->biodiv;
-  //  aien->res, forest->res, industry->res (resourceStress); storm->disp (displacement=f(stormInt)).
-  const links=[
-    ["sst","ocean"],["sst","storm"],["sst","food"],["sst","biodiv"],
-    ["ocean","storm"],
-    ["forest","food"],["forest","res"],
-    ["industry","biodiv"],["industry","res"],
-    ["aien","res"],
-    ["storm","disp"],
-  ];
-  const byId={}; [...drivers,...mid,...out].forEach(n=>byId[n.id]=n);
-  return {drivers, mid, out, links, byId};
-}
-
-function cascadeDiagram(R){
-  const {drivers, mid, out, links, byId} = cascadeGraphData(R);
-  const narrow = (typeof window!=="undefined" && window.innerWidth<=560);
-  const W = narrow?440:680, H = narrow?420:340;
-  const x1 = narrow?62:74, x2 = narrow?220:320, x3 = narrow?378:600;
-  const yPos=(arr,i)=>{ const gap=H/(arr.length+1); return gap*(i+1); };
-  const pos={};
-  drivers.forEach((n,i)=>pos[n.id]={x:x1,y:yPos(drivers,i),...n});
-  mid.forEach((n,i)=>pos[n.id]={x:x2,y:yPos(mid,i),...n});
-  out.forEach((n,i)=>pos[n.id]={x:x3,y:yPos(out,i),...n});
-
-  let path="";
-  links.forEach(([a,b])=>{
-    const A=pos[a],B=pos[b]; if(!A||!B) return;
-    const inten=(A.v+B.v)/2;
-    const wd=1+inten/22, op=.18+inten/180;
-    const col=inten>=66?"--red":inten>=48?"--amber":"--aqua";
-    const marker=col==="--red"?"cascArrowRed":col==="--amber"?"cascArrowAmber":"cascArrowAqua";
-    const mx=(A.x+B.x)/2;
-    path+=`<path d="M${A.x+8} ${A.y} C ${mx} ${A.y}, ${mx} ${B.y}, ${B.x-14} ${B.y}"
-      stroke="${cv(col)}" stroke-width="${wd.toFixed(1)}" fill="none" opacity="${op.toFixed(2)}"
-      stroke-linecap="round" marker-end="url(#${marker})"/>`;
-  });
-  let nodes="";
-  const rMax = narrow?10:14, rDiv = narrow?13:10, fNode = narrow?9:10.5;
-  [...drivers,...mid,...out].forEach(n=>{
-    const p=pos[n.id], col=cv(n.c), r=rMax+n.v/rDiv;
-    nodes+=`<g>
-      <circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${col}1a" stroke="${col}" stroke-width="1.6"/>
-      <circle cx="${p.x}" cy="${p.y}" r="3.5" fill="${col}"/>
-      <text x="${p.x}" y="${p.y-r-7}" text-anchor="middle" fill="${cv('--txt')}"
-        font-size="${fNode}" font-weight="600" font-family="Space Grotesk">${n.nm}</text>
-      <text x="${p.x}" y="${p.y+r+15}" text-anchor="middle" fill="${col}"
-        font-size="${fNode}" font-weight="700" font-family="JetBrains Mono">${n.v}</text>
-    </g>`;
-  });
-  const colLbl=(x,t)=>`<text x="${x}" y="20" text-anchor="middle" fill="${cv('--muted')}"
-    font-size="${narrow?8.5:10}" font-weight="600" letter-spacing="${narrow?.6:1.4}" font-family="Space Grotesk">${t}</text>`;
-  const arrowDefs=`<defs>
-    <marker id="cascArrowAqua" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="${cv('--aqua')}"/></marker>
-    <marker id="cascArrowAmber" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="${cv('--amber')}"/></marker>
-    <marker id="cascArrowRed" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="${cv('--red')}"/></marker>
-  </defs>`;
-  return `<svg id="cascadeSVG" viewBox="0 0 ${W} ${H}" width="100%">
-    ${arrowDefs}
-    ${colLbl(x1,"Drivers")}${colLbl(x2,"System stress")}${colLbl(x3,"Cascading outcome")}
-    ${path}${nodes}</svg>`;
-}
-
-function cascadeWhatThisMeans(R){
-  // Plain-language read-out of the same drivers/links/outcomes cascadeDiagram renders (via the
-  // shared cascadeGraphData(R)), so the three summary values below always match the diagram.
-  const {drivers, out, links, byId} = cascadeGraphData(R);
-  const topDriver = [...drivers].sort((a,b)=>b.v-a.v)[0];
-  const topOutcome = [...out].sort((a,b)=>b.v-a.v)[0];
-  let bestLink=null, bestInten=-1;
-  links.forEach(([a,b])=>{
-    const A=byId[a], B=byId[b]; if(!A||!B) return;
-    const inten=(A.v+B.v)/2;
-    if(inten>bestInten){ bestInten=inten; bestLink={A,B}; }
-  });
-  const strength = bestInten>=66?"High":bestInten>=48?"Moderate":"Lower";
-  const strengthCol = bestInten>=66?"--red":bestInten>=48?"--amber":"--aqua";
-  const ICON_BG = {"--aqua":"rgba(72,208,174,.16)", "--violet":"rgba(156,167,232,.16)",
-    "--green":"rgba(127,216,154,.16)", "--amber":"rgba(232,178,74,.16)", "--red":"rgba(240,121,92,.16)"};
-  const icBolt = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
-  const icLink = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 15l6-6M8 17l-3-3a4 4 0 010-5.7l2-2a4 4 0 015.7 0M16 7l3 3a4 4 0 010 5.7l-2 2a4 4 0 01-5.7 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
-  const icPeople = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.8"/><circle cx="17" cy="9" r="2.6" stroke="currentColor" stroke-width="1.8"/><path d="M2 20c0-3.3 2.7-6 6-6s6 2.7 6 6M14 20c0-2.4 1-4.5 2.6-5.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
-  const item=(ic,col,label,value,sub)=>`
-    <div style="display:flex;gap:9px;align-items:flex-start">
-      <div class="insight-ic" style="background:${ICON_BG[col]};color:${cv(col)}">${ic}</div>
-      <div style="min-width:0">
-        <div class="ik">${label}</div>
-        <div class="iv" style="font-size:14px">${value}</div>
-        ${sub?`<div class="score-sub">${sub}</div>`:""}
-      </div>
-    </div>`;
-  return `
-    <div class="panel">
-      <div class="phead"><span class="dot" style="background:var(--aqua)"></span>
-        <h2>What this means for ${ST.region.name.split('(')[0].trim()}</h2></div>
-      <div class="grid cols3" style="margin-bottom:12px">
-        ${item(icBolt,"--red","Primary regional pressure", topDriver.nm, `Score: ${topDriver.v}`)}
-        ${item(icLink,strengthCol,"Strongest modeled link", `${bestLink.A.nm} \u2192 ${bestLink.B.nm}`, `Strength: ${strength}`)}
-        ${item(icPeople,"--violet","Highest downstream outcome", topOutcome.nm, `Score: ${topOutcome.v}`)}
-      </div>
-      <p style="font-size:12.5px;color:#B7D3BF;line-height:1.6;margin:0">
-        <b style="color:var(--txt)">${topDriver.nm}</b> is the strongest current regional pressure. The strongest
-        modeled relationship overall is <b style="color:var(--txt)">${bestLink.A.nm} \u2192 ${bestLink.B.nm}</b>.
-        <b style="color:var(--txt)">${topOutcome.nm}</b> is currently the highest downstream outcome.</p>
-    </div>`;
-}
-
-/* =========================================================
-   VIEW BUILDERS
-   ========================================================= */
-function worldLandPaths(){
-  return `
-    <!-- North America -->
-    <path d="M70 70 L150 58 L180 72 L172 96 L196 104 L188 140 L150 150 L120 132 L96 138 L78 112 L88 92 Z"/>
-    <path d="M150 150 L172 150 L168 168 L150 168 Z"/>
-    <!-- South America -->
-    <path d="M196 196 L224 188 L236 214 L226 256 L208 300 L194 268 L188 226 Z"/>
-    <!-- Europe -->
-    <path d="M348 70 L398 60 L420 72 L406 92 L372 96 L352 88 Z"/>
-    <!-- Africa -->
-    <path d="M356 110 L408 104 L430 128 L424 176 L400 224 L376 212 L360 168 L352 136 Z"/>
-    <!-- Asia -->
-    <path d="M420 64 L520 52 L600 64 L640 88 L628 120 L572 132 L520 122 L468 132 L436 110 L424 86 Z"/>
-    <path d="M560 132 L600 128 L612 160 L588 178 L566 156 Z"/>
-    <!-- SE Asia / Indonesia -->
-    <path d="M600 176 L648 172 L660 196 L632 210 L606 196 Z"/>
-    <!-- Australia -->
-    <path d="M600 232 L660 224 L686 252 L668 288 L616 284 L596 256 Z"/>`;
-}
-
-function spilloverMap(activeProp){
-  // Compact dotted/stippled world map (real coastline data via worldLandPaths()) with a
-  // glowing origin marker. When spillover is "documented" it also
-  // draws an arc to each real destination region from REGION_CONNECTIONS, with every dot
-  // hoverable for real connection info. When spillover is only "possible" or "none", it shows
-  // ONLY the origin marker with a subtle glow -- no decorative arcs in arbitrary directions, so
-  // the map never visually implies a geographic destination the model does not actually know.
-  // Rendered inside the Simulator's scenario results. Hover/focus uses the .tip / .tip-box pattern.
-  const W=720,H=360;
-  const proj=(lat,lon)=>({ x:(lon+180)/360*W, y:(90-lat)/180*H });
-  const o = proj(ST.region.lat, ST.region.lon);
-  const tips=[];
-  const tipDiv=(p,label,sub,key)=>{
-    tips.push(`<div class="tip" tabindex="0" aria-label="${label}" style="position:absolute;left:${(p.x/W*100).toFixed(2)}%;top:${(p.y/H*100).toFixed(2)}%;
-        transform:translate(-50%,-50%);width:22px;height:22px;margin:0;color:transparent;cursor:pointer" data-spill="${key}">
-        <span class="tip-box" style="left:50%;top:auto;bottom:150%;transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px)">
-          <b style="color:var(--txt)">${label}</b>${sub?`<br><span style="color:var(--muted)">${sub}</span>`:""}
-        </span>
-      </div>`);
-  };
-
-  let arcsSVG="", destDotsSVG="";
-  if(activeProp.spilloverStatus==="documented"){
-    activeProp.affectedRegions.forEach(ar=>{
-      const reg = REGIONS.find(r=>r.id===ar.id); if(!reg) return;
-      const p = proj(reg.lat, reg.lon);
-      const mx=(o.x+p.x)/2, my=Math.min(o.y,p.y)-26;
-      arcsSVG+=`<path d="M${o.x} ${o.y} Q${mx} ${my} ${p.x} ${p.y}" stroke="var(--amber)" stroke-width="1.5" fill="none" opacity=".8"/>`;
-      destDotsSVG+=`<circle cx="${p.x}" cy="${p.y}" r="4.5" fill="var(--amber)" stroke="#2A1D06" stroke-width="1.2"/>`;
-      tipDiv(p, reg.name, `${ar.connectionType} \u00B7 ${(ar.impact*100).toFixed(1)} impact`, ar.id);
-    });
-  }
-
-  const originLabel = activeProp.spilloverStatus==="documented" ? `Origin \u00B7 driving ${activeProp.affectedRegions.length} documented connection${activeProp.affectedRegions.length===1?"":"s"}`
-    : activeProp.spilloverStatus==="possible" ? "Origin \u00B7 elevated pressure, no documented destination"
-    : "Origin \u00B7 spillover not indicated at current levels";
-  tipDiv(o, ST.region.name, originLabel, "origin");
-
-  return `<div class="hot-map" style="aspect-ratio:2/1">
-    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%;display:block;border-radius:8px" aria-hidden="true">
-      <defs>
-        <clipPath id="spillLandClip">${worldLandPaths()}</clipPath>
-        <pattern id="spillDots" width="7" height="7" patternUnits="userSpaceOnUse">
-          <circle cx="1.6" cy="1.6" r="1.15" fill="#8FE3C9" opacity=".55"/>
-        </pattern>
-      </defs>
-      <rect x="0" y="0" width="${W}" height="${H}" fill="#04140F"/>
-      <rect x="0" y="0" width="${W}" height="${H}" fill="url(#spillDots)" clip-path="url(#spillLandClip)"/>
-      ${arcsSVG}
-      <circle cx="${o.x}" cy="${o.y}" r="12" fill="var(--amber)" opacity=".22"><animate attributeName="r" values="9;18;9" dur="2.4s" repeatCount="indefinite"/><animate attributeName="opacity" values=".3;0;.3" dur="2.4s" repeatCount="indefinite"/></circle>
-      <circle cx="${o.x}" cy="${o.y}" r="5.5" fill="var(--amber)" stroke="#2A1D06" stroke-width="1.4"/>
-      ${destDotsSVG}
-    </svg>
-    ${tips.join("")}
-  </div>`;
-}
-
 function simScenarioResultHTML(sim){
   // Top-of-result "Scenario result" summary using the shared scoreCompareCard component (same
   // visual family as Overview/AI Strategist), so the user understands the headline outcome
@@ -2061,7 +1887,7 @@ function strategistResultHTML(){
   const s = ST.strategist;
   if(!s.result){
     return `<div class="strat-empty"><div style="font-size:26px;opacity:.5;margin-bottom:8px">&#9671;</div>
-      <p>Set your priorities above, then generate a strategy. Every score shown comes from EarthShield's
+      <p>Set your priorities above, then generate a strategy. Every score shown comes from Spillover's
       verified deterministic candidates, the AI (or the instant rule-based fallback) only selects, sequences
       and explains one of them.</p></div>`;
   }
@@ -2069,7 +1895,7 @@ function strategistResultHTML(){
   const badge = s.source==="gemini" ? `<span class="strat-badge ai">AI Cascade Strategist</span>`
     : `<span class="strat-badge instant">Instant Rule-Based Strategy</span>`;
   const instantNote = s.source!=="gemini"
-    ? `<div class="model-note" style="display:block;margin-top:10px">This strategy was generated using EarthShield's transparent optimization rules. No generative AI was used.</div>` : "";
+    ? `<div class="model-note" style="display:block;margin-top:10px">This strategy was generated using Spillover's transparent optimization rules. No generative AI was used.</div>` : "";
   const actsByKey = Object.fromEntries(mitigationActions().map(a=>[a.key,a]));
   const sortedIv = r.interventions.slice().sort((a,b)=>a.priority-b.priority);
   const ivCards = sortedIv.map(iv=>{
@@ -2158,7 +1984,7 @@ async function runStrategistGenerate(useAI, presetPrefs){
 
   // scenario-aware: if the user has run a simulator scenario, the strategist plans
   // against that scenario's state, not the untouched baseline.
-  const scenarioSim = ST.sim ? { ...ST.simInputs } : null;
+  const scenarioSim = currentScenarioSim();
   const R = computeRisks(ST.region, ST.live, scenarioSim);
   const prop = propagatePlanetaryCascade(ST.region, R, scenarioSim);
   const candResult = generateInterventionCandidates({
@@ -2243,60 +2069,60 @@ async function runStrategistGenerate(useAI, presetPrefs){
    plain: user-facing plain-language name
    technical: technical name/abbreviation, if any (null if none)
    def: short definition
-   why: why it matters in EarthShield specifically
+   why: why it matters in Spillover specifically
    ========================================================= */
 const GLOSSARY = {
   regionalStress: { plain:"Regional Stress Score", technical:null,
-    def:"A modeled 0–100 score combining EarthShield's seven regional risk domains. Higher values indicate more combined pressure.",
+    def:"A modeled 0–100 score combining Spillover's seven regional risk domains. Higher values indicate more combined pressure.",
     why:"This is the headline number for the region you have selected; every other regional view explains what feeds into it." },
   globalCascadePotential: { plain:"Global Cascade Potential", technical:"GCP",
-    def:"A modeled 0–100 index estimating how strongly stress in the selected region could propagate through EarthShield's connected systems. It is not a disaster forecast.",
+    def:"A modeled 0–100 index estimating how strongly stress in the selected region could propagate through Spillover's connected systems. It is not a disaster forecast.",
     why:"It is the second headline score, showing how far a regional problem could reach beyond the region itself." },
   connectivityIndex: { plain:"Modeled connectivity index", technical:null,
-    def:"Estimates how stress may propagate through EarthShield's defined dependency graph. It is not a probability, operational forecast, or globally validated risk rating.",
+    def:"Estimates how stress may propagate through Spillover's defined dependency graph. It is not a probability, operational forecast, or globally validated risk rating.",
     why:"This caption sits under the Global Cascade Potential score to make clear what kind of number it is." },
   sst: { plain:"Sea-surface temperature", technical:"SST",
     def:"The temperature of the ocean's surface layer at the region's location, pulled from live marine data where available.",
-    why:"Warmer sea-surface temperature is the primary fuel EarthShield uses to estimate ocean heat and storm-intensification risk." },
+    why:"Warmer sea-surface temperature is the primary fuel Spillover uses to estimate ocean heat and storm-intensification risk." },
   sstAnomaly: { plain:"Sea temperature difference from baseline", technical:"SST anomaly",
-    def:"How much warmer or cooler the current sea-surface temperature is compared with EarthShield's recent statistical baseline.",
-    why:"A positive anomaly is the strongest single signal EarthShield uses to raise ocean and storm-related risk for a region." },
+    def:"How much warmer or cooler the current sea-surface temperature is compared with Spillover's recent statistical baseline.",
+    why:"A positive anomaly is the strongest single signal Spillover uses to raise ocean and storm-related risk for a region." },
   statisticalBaseline: { plain:"Statistical SST baseline", technical:"OLS-fit baseline",
     def:"A recent-trend baseline for sea-surface temperature, fit from about 60 days of real historical data instead of a fixed constant.",
-    why:"EarthShield compares live sea temperature against this fitted baseline, not a hardcoded number, to compute the anomaly." },
+    why:"Spillover compares live sea temperature against this fitted baseline, not a hardcoded number, to compute the anomaly." },
   olsRegression: { plain:"Statistical trend model", technical:"OLS regression",
     def:"Ordinary least squares regression, a standard statistical method for fitting a straight-line trend through recent data points.",
-    why:"EarthShield uses this to fit the sea-surface temperature baseline. It is a real statistical model, not the generative-AI Strategist." },
+    why:"Spillover uses this to fit the sea-surface temperature baseline. It is a real statistical model, not the generative-AI Strategist." },
   cape: { plain:"Atmospheric instability", technical:"CAPE",
     def:"Convective Available Potential Energy estimates how much energy is available for rising air and thunderstorm development.",
-    why:"Higher instability is one of the atmospheric ingredients EarthShield combines with ocean heat to estimate storm-intensification risk." },
+    why:"Higher instability is one of the atmospheric ingredients Spillover combines with ocean heat to estimate storm-intensification risk." },
   windShear: { plain:"Wind shear", technical:null,
     def:"Change in wind speed or direction with height. It can influence storm organization.",
-    why:"EarthShield includes wind shear as one of the convective ingredients feeding the storm-intensification domain." },
+    why:"Spillover includes wind shear as one of the convective ingredients feeding the storm-intensification domain." },
   humidity: { plain:"Humidity", technical:null,
     def:"Surface moisture in the air, pulled from live atmospheric data where available.",
-    why:"Humidity is another convective ingredient EarthShield combines with ocean heat and instability for storm risk." },
+    why:"Humidity is another convective ingredient Spillover combines with ocean heat and instability for storm risk." },
   aqi: { plain:"Air quality", technical:"AQI",
     def:"The Air Quality Index summarizes how polluted the air is, on a standard scale.",
-    why:"Poorer air quality contributes to EarthShield's biodiversity and resource-stress domains." },
+    why:"Poorer air quality contributes to Spillover's biodiversity and resource-stress domains." },
   pm25: { plain:"Fine particulate matter", technical:"PM2.5",
     def:"Airborne particles smaller than 2.5 micrometers, a standard measure of air pollution and a contributor to the Air Quality Index.",
-    why:"PM2.5 is one of the live air-quality signals EarthShield pulls in alongside AQI." },
+    why:"PM2.5 is one of the live air-quality signals Spillover pulls in alongside AQI." },
   resourceStress: { plain:"Resource Stress", technical:null,
-    def:"One of EarthShield's seven risk domains, combining industrial activity, mining, energy demand, forest loss, air quality and AI data-center load into a single pressure score.",
+    def:"One of Spillover's seven risk domains, combining industrial activity, mining, energy demand, forest loss, air quality and AI data-center load into a single pressure score.",
     why:"Resource Stress is where human consumption pressure, distinct from ocean warming, enters the Regional Stress Score." },
   dataCenterLoad: { plain:"AI Data Center Load", technical:null,
     def:"A modeled index of regional data-center electricity and cooling demand, a fast-growing modern driver of resource pressure.",
-    why:"EarthShield treats AI and data-center growth as a first-class, rising pressure rather than folding it invisibly into generic energy demand." },
+    why:"Spillover treats AI and data-center growth as a first-class, rising pressure rather than folding it invisibly into generic energy demand." },
   cascadePathway: { plain:"Cascade pathway", technical:null,
-    def:"A specific chain of connections, from a regional risk domain through EarthShield's dependency graph, showing how stress could reach other systems.",
+    def:"A specific chain of connections, from a regional risk domain through Spillover's dependency graph, showing how stress could reach other systems.",
     why:"Pathways are what make Global Cascade Potential explainable: every number traces back to a real, inspectable chain of edges." },
   materialSystem: { plain:"Materially affected system", technical:null,
-    def:"A planetary system node whose modeled impact from the current scenario clears EarthShield's calibrated significance threshold, not just a nonzero signal.",
+    def:"A planetary system node whose modeled impact from the current scenario clears Spillover's calibrated significance threshold, not just a nonzero signal.",
     why:"This distinguishes systems genuinely worth a decision-maker's attention from minor secondary signals." },
   crossRegionSpillover: { plain:"Cross-region spillover", technical:null,
     def:"The possibility that displacement pressure from the selected region reaches another region, based on a small documented dataset of real connections (shared storm basins, migration corridors, shared infrastructure).",
-    why:"EarthShield only names a destination region when a documented connection exists; otherwise it reports spillover as possible without inventing a destination." },
+    why:"Spillover only names a destination region when a documented connection exists; otherwise it reports spillover as possible without inventing a destination." },
   sensitivity: { plain:"Model sensitivity", technical:null,
     def:"Sensitivity shows how much the modeled score changes when uncertain assumptions are varied within their tested ranges. It is not a probability forecast or a statistical confidence interval.",
     why:"It shows how much the Regional Stress Score could move if a key assumption were different, a transparency check rather than a forecast interval." },
@@ -2308,28 +2134,28 @@ const GLOSSARY = {
     why:"Assumption-sensitive results should be interpreted with more caution than high-confidence ones." },
   assumptionSensitive: { plain:"Assumption-sensitive", technical:null,
     def:"The exact score changes noticeably when model assumptions are varied, so the result should be interpreted with more caution.",
-    why:"This is EarthShield's lowest confidence label, an honest flag rather than a hidden caveat." },
+    why:"This is Spillover's lowest confidence label, an honest flag rather than a hidden caveat." },
   modeledBaseline: { plain:"Modeled baseline", technical:null,
     def:"A regional value calibrated from public-source ranges (for example NASA, IEA, IPCC) rather than pulled from a live feed.",
-    why:"EarthShield labels every input as live or modeled so users know which numbers are measured right now versus estimated." },
+    why:"Spillover labels every input as live or modeled so users know which numbers are measured right now versus estimated." },
   liveSignal: { plain:"Live signal", technical:null,
     def:"A value pulled directly from an open data API (Open-Meteo marine, forecast, or air-quality) at the time of the current session.",
-    why:"Live signals update EarthShield's regional score with real current conditions instead of a static assumption." },
+    why:"Live signals update Spillover's regional score with real current conditions instead of a static assumption." },
   scenario: { plain:"Scenario", technical:null,
     def:"A counterfactual set of stressor changes, applied on top of the current baseline to see how the regional and planetary scores would respond.",
     why:"Scenarios, built in the Simulator, let users test what-if situations without altering the live baseline." },
   intervention: { plain:"Intervention", technical:null,
     def:"A specific, documented action (for example hardening the grid or restoring wetlands) that changes one or more model variables and is verified by rerunning the full model.",
-    why:"Every intervention effect shown in EarthShield comes from an actual model rerun, not an estimated or asserted number." },
+    why:"Every intervention effect shown in Spillover comes from an actual model rerun, not an estimated or asserted number." },
   evidenceBased: { plain:"Evidence-based connection", technical:null,
     def:"A dependency-graph connection backed by a specific, named real-world source (for example a NASA or NOAA dataset or report).",
-    why:"This is EarthShield's highest-confidence category of cascade connection." },
+    why:"This is Spillover's highest-confidence category of cascade connection." },
   modeledProxy: { plain:"Modeled proxy", technical:null,
-    def:"A dependency-graph connection representing a widely documented real-world pattern, but scored using EarthShield's own modeled strength rather than one specific measured coefficient.",
+    def:"A dependency-graph connection representing a widely documented real-world pattern, but scored using Spillover's own modeled strength rather than one specific measured coefficient.",
     why:"This is an honest middle confidence tier, real but not tied to a single citable number." },
   scenarioAssumption: { plain:"Scenario assumption", technical:null,
     def:"A dependency-graph connection that is a reasonable modeling assumption, not independently measured or sourced.",
-    why:"EarthShield's lowest-confidence connection tier, shown so users know exactly which links are asserted versus sourced." },
+    why:"Spillover's lowest-confidence connection tier, shown so users know exactly which links are asserted versus sourced." },
 };
 /* Small inline help icon (ⓘ) reusing the existing .tip/.tip-box tooltip pattern,
    sourced from the same GLOSSARY object as the Info -> Glossary page so a definition
@@ -2390,7 +2216,6 @@ function wireExpandSections(){
    after server-side validation.
    ========================================================= */
 function renderAll(){
-  buildHeaderScores();
   buildDashboard();
   buildSimulator();
   buildInterventions();
@@ -2409,18 +2234,12 @@ function loadingCard(txt){
 /* ---------------------------------------------------------
    HEADER SCORES. Both headline numbers stay on screen on every
    tab, so the user never has to scroll or switch views to see
-   the Regional Stress Score or the Global Cascade Potential.
-   Always baseline (no scenario applied); scenario values live
-   in the Simulator result panel where the comparison belongs.
+   the Regional Stress Score and the Global Cascade Potential, shown
+   at the top of the Dashboard. Always baseline (no scenario applied);
+   scenario values live in the Simulator result panel where the
+   comparison belongs.
    --------------------------------------------------------- */
-function buildHeaderScores(){
-  const el=$("#hScores"); if(!el) return;
-  if(ST.loading && !ST.live){
-    el.innerHTML=`<div class="hscore busy"><span class="spin"></span> Loading live signals…</div>`;
-    return;
-  }
-  const R = computeRisks(ST.region, ST.live, null);
-  const prop = propagatePlanetaryCascade(ST.region, R, null);
+function scoresStripHTML(R, prop){
   const b1 = band(R.cascade), b2 = gcpBand(prop.gcp);
   const card=(score,bandObj,bandFn,key,label,sub)=>`
     <div class="hscore">
@@ -2431,9 +2250,10 @@ function buildHeaderScores(){
         <div class="s">${sub}</div>
       </div>
     </div>`;
-  el.innerHTML =
+  return `<div class="hscores">` +
     card(R.cascade, b1, band, "regionalStress", "Regional stress", `${R.cascade}/100`) +
-    card(prop.gcp, b2, gcpBand, "globalCascadePotential", "Cascade potential", `${prop.gcp}/100`);
+    card(prop.gcp, b2, gcpBand, "globalCascadePotential", "Cascade potential", `${prop.gcp}/100`) +
+    `</div>`;
 }
 
 /* ---------------------------------------------------------
@@ -2477,7 +2297,7 @@ function buildDashboard(){
       <p style="font-family:'Space Grotesk';font-size:16px;font-weight:600;line-height:1.45;margin:0 0 8px">
         One regional stress can cascade across connected systems.</p>
       <p style="font-size:12.5px;color:#B7D3BF;line-height:1.6;margin:0">
-        ${bnd.d} EarthShield scores the combined pressure on ${regionShort}, then propagates it through a
+        ${bnd.d} Spillover scores the combined pressure on ${regionShort}, then propagates it through a
         documented dependency graph to estimate how far it travels.</p>
       <div class="preset-lab" style="margin-top:16px">Top drivers right now</div>
       <div class="drivers" style="margin-top:8px">${chips}</div>
@@ -2494,10 +2314,13 @@ function buildDashboard(){
         <div class="lvm-row"><span class="lvm-k">Sensitivity${helpIcon("sensitivity")}</span>
           <span class="lvm-v">${unc.confidence} · most sensitive to ${unc.largestUncertaintyDriver.toLowerCase()} (±${unc.largestImpact} pts)</span></div>
       </div>
-      <div style="margin-top:16px">
+      <div class="cta-row">
         <button class="btn primary" id="goSim">Run a scenario →</button>
+        <button class="btn secondary" id="goInterventions">See interventions →</button>
       </div>
     </div>
+
+    ${scoresStripHTML(R, prop)}
 
     <div class="panel">
       <div class="phead"><span class="dot" style="background:var(--amber)"></span>
@@ -2511,6 +2334,7 @@ function buildDashboard(){
     ${regionContextHTML()}`;
 
   const gs=$("#goSim"); if(gs) gs.onclick=()=>setView("sim");
+  const gi=$("#goInterventions"); if(gi) gi.onclick=()=>setView("interventions");
 }
 
 /* ---- region context: the live/modeled signals this region is scored from ---- */
@@ -2594,8 +2418,7 @@ function buildSimulator(){
           <h2>Projected change</h2></div>
         <div id="simOut">${simResult}</div>
       </div>
-    </div>
-    <div id="simCascade">${ST.sim?simCascadeHTML():""}</div>`;
+    </div>`;
 
   ["energy","dataCtr","forest","sst","coastPop","gridResilience","coastalBuffer"].forEach(id=>{
     const inp=$(`#sim-${id}`); if(!inp) return;
@@ -2607,7 +2430,6 @@ function buildSimulator(){
         ST.sim=null;
         $("#simOut").innerHTML=`<div class="empty-sim"><div class="ico">◇</div><p>Inputs changed, press
           <b style="color:var(--aqua)">Run simulation</b> to recompute.</p></div>`;
-        $("#simCascade").innerHTML="";
         const t=$('#v-sim .phead .tag'); if(t) t.remove();
       }
     };
@@ -2640,37 +2462,10 @@ function buildSimulator(){
   });
 }
 
-/* ---- cascade diagram + spillover map, scenario state, Simulator results only ---- */
-function simCascadeHTML(){
-  if(!ST.sim) return "";
-  const scenarioSim = {...ST.simInputs};
-  const R = ST.sim.after;
-  const prop = propagatePlanetaryCascade(ST.region, R, scenarioSim);
-  const spillNote = prop.spilloverStatus==="documented"
-    ? `Arcs are drawn only to regions EarthShield has a documented connection for (${prop.affectedRegions.map(r=>r.name).join(", ")}).`
-    : prop.spilloverStatus==="possible"
-      ? "Displacement pressure is elevated, but EarthShield has no documented connection for this origin, so no destination is asserted."
-      : "Displacement pressure is not high enough for the model to indicate cross-region spillover.";
-  return `
-    <div class="panel">
-      <div class="phead"><span class="dot" style="background:var(--red)"></span>
-        <h2>Cascade under this scenario</h2></div>
-      <div class="cascade-wrap">${cascadeDiagram(R)}</div>
-      <div class="cz-legend">
-        <span><i style="background:var(--aqua)"></i>Lower intensity</span>
-        <span><i style="background:var(--amber)"></i>Elevated</span>
-        <span><i style="background:var(--red)"></i>High</span>
-        <span>Node size and link width scale with modeled intensity.</span>
-      </div>
-    </div>
-    ${cascadeWhatThisMeans(R)}
-    <div class="panel">
-      <div class="phead"><span class="dot" style="background:var(--amber)"></span>
-        <h2>Cross-region spillover${helpIcon("crossRegionSpillover")}</h2></div>
-      ${spilloverMap(prop)}
-      <div class="mit-disc" style="margin-top:12px">${spillNote}</div>
-    </div>`;
-}
+/* The counterfactual the app is currently reasoning about: the Simulator scenario when one
+   has been run, otherwise the untouched baseline. Interventions and the strategy builder both
+   read it, so their numbers always describe the same world. */
+function currentScenarioSim(){ return ST.sim ? { ...ST.simInputs } : null; }
 
 /* ---------------------------------------------------------
    INTERVENTIONS. Filterable, ranked action list, then a strategy
@@ -2681,7 +2476,7 @@ function simCascadeHTML(){
    --------------------------------------------------------- */
 function buildInterventions(){
   const el=$("#v-interventions"); if(!el) return;
-  const m=mitigations(ST.region, ST.live);
+  const m=mitigations(ST.region, ST.live, currentScenarioSim());
   const IMPACT_COL = {High:"var(--green)", Medium:"var(--amber)", Low:"var(--muted)"};
   const EFFORT_COL = {Low:"var(--green)", Medium:"var(--amber)", High:"var(--red)"};
   const allSystems = [...new Set(m.list.flatMap(a=>a.domains))].sort();
@@ -2700,7 +2495,7 @@ function buildInterventions(){
   const cards=filtered.map((a)=>{
     const i = m.list.indexOf(a);
     const bucket = mitImpactBucket(a, m.list);
-    const checked = ST.mitSelected.includes(i);
+    const checked = ST.mitSelected.includes(a.key);
     const meta=[
       ["Regional effect", `${a.why} (domains: ${a.domains.join(", ")})`],
       ["Planetary effect", a.planetaryNarrative],
@@ -2719,7 +2514,7 @@ function buildInterventions(){
     return `
     <div class="mit" data-idx="${i}">
       <div style="display:flex;gap:10px;padding:14px 14px 0 14px;align-items:flex-start">
-        <input type="checkbox" class="mit-check" data-check="${i}" ${checked?"checked":""} aria-label="Select ${a.nm} for the strategy builder">
+        <input type="checkbox" class="mit-check" data-check="${a.key}" ${checked?"checked":""} aria-label="Select ${a.nm} for the strategy builder">
         <button class="mit-head" data-toggle="${i}" style="padding:0 0 14px;flex:1;align-items:flex-start">
           <div class="rank">${i+1}</div>
           <div class="mbody">
@@ -2786,9 +2581,9 @@ function buildInterventions(){
   });
   document.querySelectorAll("#v-interventions .mit-check").forEach(cb=>cb.onclick=(e)=>{
     e.stopPropagation();
-    const i=+cb.dataset.check;
-    const idx=ST.mitSelected.indexOf(i);
-    if(cb.checked && idx===-1) ST.mitSelected.push(i);
+    const key=cb.dataset.check;
+    const idx=ST.mitSelected.indexOf(key);
+    if(cb.checked && idx===-1) ST.mitSelected.push(key);
     if(!cb.checked && idx!==-1) ST.mitSelected.splice(idx,1);
     const countEl=$("#stratCount"); if(countEl) countEl.innerHTML = strategySelectionNote();
   });
@@ -2806,12 +2601,7 @@ function buildInterventions(){
 /* ---- which ticked interventions the optimizer will be constrained to ---- */
 function selectedInterventionKeys(){
   const acts = mitigationActions();
-  const m = mitigations(ST.region, ST.live);
-  return ST.mitSelected
-    .map(i=>m.list[i])
-    .filter(Boolean)
-    .map(a=>a.key)
-    .filter(k=>acts.some(x=>x.key===k));
+  return ST.mitSelected.filter(k=>acts.some(a=>a.key===k));
 }
 
 function strategySelectionNote(){
@@ -2876,9 +2666,9 @@ function buildFooter(){
    and the Info tab before them.
    --------------------------------------------------------- */
 const MODAL_CONTENT = {
-  how: { title:"How EarthShield works", body:`
+  how: { title:"How Spillover works", body:`
     <div style="font-size:12.5px;color:#B7D3BF;line-height:1.65">
-      <p style="margin:0 0 10px">EarthShield scores a coastal region on seven risk domains (ocean heat, storm
+      <p style="margin:0 0 10px">Spillover scores a coastal region on seven risk domains (ocean heat, storm
       intensification, biodiversity, food and water, displacement, resource stress and AI data-center load).
       Live sea-surface temperature, atmospheric and air-quality signals come from key-free Open-Meteo endpoints;
       the sea-temperature baseline is fitted with an ordinary-least-squares regression over roughly 60 days of
@@ -2922,8 +2712,6 @@ document.addEventListener("keydown",(e)=>{ if(e.key==="Escape") closeModal(); })
 function setView(v){
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("on",t.dataset.v===v));
   document.querySelectorAll(".view").forEach(s=>s.classList.toggle("on",s.id==="v-"+v));
-  // the two headline rings belong to the Dashboard, so they ride with it
-  $("#hScores").style.display = v==="dashboard" ? "flex" : "none";
   $("#main").scrollTop=0;
 }
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>setView(t.dataset.v));
@@ -2944,7 +2732,6 @@ function fillRegions(){
 
 async function refresh(){
   ST.loading=true;
-  buildHeaderScores();
   $("#v-dashboard").innerHTML=loadingCard("Pulling live ocean & atmosphere signals…");
   try{ ST.live=await loadLive(ST.region); }
   catch(e){ ST.live=null; }
